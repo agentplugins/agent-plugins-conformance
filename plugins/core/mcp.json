@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "default": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/probe.mjs",
+        "default",
+        "arg with spaces",
+        "",
+        "${PLUGIN_ROOT}",
+        "${PLUGIN_DATA}",
+        "${APC_UNKNOWN}",
+        "$APC_VALUE",
+        "${PLUGIN_ROOT_SUFFIX}"
+      ],
+      "env": {
+        "APC_VALUE": "fixture value with spaces",
+        "APC_EXPANSION": "${PLUGIN_ROOT}|${PLUGIN_DATA}|${PLUGIN_ROOT}",
+        "APC_LITERAL": "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}"
+      }
+    },
+    "relative": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/probe.mjs",
+        "relative"
+      ],
+      "cwd": "./probe-workdir"
+    },
+    "root": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/probe.mjs",
+        "root"
+      ],
+      "cwd": "${PLUGIN_ROOT}/probe-workdir"
+    },
+    "data": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/probe.mjs",
+        "data"
+      ],
+      "cwd": "${PLUGIN_DATA}"
+    }
+  }
+}

@@ -1,0 +1,5 @@
+* text=auto eol=lf
+plugins/core/dist/probe.mjs linguist-generated=true
+plugins/core/THIRD_PARTY_NOTICES.md linguist-generated=true
+plugins/core/LICENSE.md linguist-generated=true
+plugins/core/LICENSES/*.txt linguist-generated=true
