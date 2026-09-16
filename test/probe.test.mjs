@@ -45,7 +45,7 @@ async function connect(fixture, mode, override = {}) {
   await client.connect(transport);
   return client;
 }
-const input = (observations) => ({ schemaVersion: 1, runId: 'reference-test', client: { name: 'SDK reference harness', version: '1.30.0' }, collection: { kind: 'reference', route: 'SDK launches fixture processes directly; no client discovery tested' }, observations });
+const input = (observations) => ({ schemaVersion: 1, runId: 'reference-test', client: { name: 'SDK reference harness', version: '1.30.0' }, observations });
 
 test('copied plugin runs MCP probes and CLI reporting without node_modules', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
@@ -92,10 +92,10 @@ test('actual process deviations are evaluated as failures, not missing evidence'
   const client = await connect(files, 'default', { cwd: files.data, env: { PLUGIN_ROOT: files.data } });
   const result = await client.callTool({ name: 'observe', arguments: { runId: 'reference-test' } });
   const report = buildReport(input([result.structuredContent]));
-  for (const id of ['mcp.default.cwd', 'stdio.root', 'stdio.data', 'stdio.env']) {
+  for (const id of ['mcp.stdio.cwd.omitted', 'mcp.stdio.env.plugin-root', 'mcp.stdio.env.plugin-data-absolute', 'mcp.stdio.env.configured-value']) {
     assert.equal(report.results.find((result) => result.id === id).status, 'fail', id);
   }
-  assert.equal(report.results.find((result) => result.id === 'mcp.default.tool').status, 'pass');
+  assert.equal(report.results.find((result) => result.id === 'mcp.stdio.tool-availability.cwd-omitted').status, 'pass');
 });
 
 test('MCP tool errors remain errors and do not create success observations', { timeout: 30_000 }, async (t) => {
@@ -121,5 +121,5 @@ test('data cwd accepts a client-selected directory alias', { timeout: 30_000 }, 
   assert.equal(result.structuredContent.evidence.resolvedData, files.data);
   assert.equal(result.structuredContent.evidence.cwd, files.data);
   const report = buildReport(input([result.structuredContent]));
-  assert.equal(report.results.find(({ id }) => id === 'mcp.data.cwd').status, 'pass');
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.cwd.plugin-data').status, 'pass');
 });

@@ -1,18 +1,25 @@
+export const MCP_CWD_VARIANTS = Object.freeze({
+  default: 'omitted',
+  relative: 'plugin-relative',
+  root: 'plugin-root',
+  data: 'plugin-data',
+});
+
 export const CASES = Object.freeze([
-  ['skills.guide', 'skills', 'Guide skill marker', ['6.1', '7.1']],
-  ['skills.alpha', 'skills', 'Alpha skill marker', ['6.1', '7.1']],
-  ['skills.beta', 'skills', 'Beta skill marker', ['6.1', '7.1']],
-  ...['default', 'relative', 'root', 'data'].flatMap((server) => [
-    [`mcp.${server}.tool`, 'mcp', `${server} MCP tool evidence`, ['6.1', '7.2.1']],
-    [`mcp.${server}.cwd`, 'mcp', `${server} working directory`, ['7.2.1']],
+  ['skills.guide', 'Guide skill marker', ['6.1', '7.1']],
+  ['skills.alpha', 'Alpha skill marker', ['6.1', '7.1']],
+  ['skills.beta', 'Beta skill marker', ['6.1', '7.1']],
+  ...Object.entries(MCP_CWD_VARIANTS).flatMap(([server, variant]) => [
+    [`mcp.stdio.tool-availability.cwd-${variant}`, `${server} MCP tool evidence`, ['6.1', '7.2.1']],
+    [`mcp.stdio.cwd.${variant}`, `${server} working directory`, ['7.2.1']],
   ]),
-  ['stdio.root', 'mcp', 'Plugin root environment', ['9.1']],
-  ['stdio.data', 'mcp', 'Plugin data environment', ['9.1']],
-  ['stdio.env', 'mcp', 'Configured environment', ['9.1']],
-  ['stdio.args', 'mcp', 'Argument preservation and expansion', ['7.2.1', '9.2']],
-  ['stdio.expansion', 'mcp', 'Environment expansion', ['9.2']],
-].map(([id, category, label, specSections]) => Object.freeze({
-  id, label, category, specSections: Object.freeze(specSections),
+  ['mcp.stdio.env.plugin-root', 'Plugin root environment', ['9.1']],
+  ['mcp.stdio.env.plugin-data-absolute', 'Plugin data environment', ['9.1']],
+  ['mcp.stdio.env.configured-value', 'Configured environment', ['9.1']],
+  ['mcp.stdio.args.preservation-and-expansion', 'Argument preservation and expansion', ['7.2.1', '9.2']],
+  ['mcp.stdio.env.expansion', 'Environment expansion', ['9.2']],
+].map(([id, label, specSections]) => Object.freeze({
+  id, label, specSections: Object.freeze(specSections),
 })));
 
 export const CASE_IDS = Object.freeze(CASES.map(({ id }) => id));

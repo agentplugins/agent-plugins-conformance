@@ -10,11 +10,11 @@ This initial release covers skill discovery, MCP tool availability, working dire
 2. Load this directory using the client's Agent Plugins support. The portable manifest and MCP configuration are the root-level `plugin.json` and `mcp.json`.
 3. Ask the agent to run the plugin's `conformance-guide` skill. If the client exposes MCP servers but no skills, give the agent the collection procedure below instead.
 
-Use the actual client installation route. Manually starting the servers or injecting skill contents can exercise the fixtures, but cannot demonstrate client discovery. Label such runs `reference`.
+Use the client's plugin installation route so its loader discovers the portable configuration and components.
 
 ## Collect observations
 
-Choose one unique `runId` for the run. Record the client name, version (or `unknown` if unavailable), and a short description of how the client loaded the plugin in `collection.route`.
+Choose one unique `runId` for the run. Record the client name and version (or `unknown` if unavailable).
 
 ### Skills
 
@@ -55,12 +55,9 @@ Start with this empty-evidence input and replace the run and client details:
   "schemaVersion": 1,
   "runId": "chosen-unique-run-id",
   "client": {"name": "Example client", "version": "unknown"},
-  "collection": {"kind": "client", "route": "Loaded the directory through the client's plugin support"},
   "observations": []
 }
 ```
-
-`collection` records the collector's account of how the evidence was obtained. Use `kind: "client"` for the client's native plugin loading and `kind: "reference"` for synthetic, harness, or manually configured runs. `route` describes that process in free text. This metadata does not independently authenticate the loading route.
 
 `observations[].kind` identifies the evidence shape: `"skill"` is a loaded skill marker reported by the agent; `"runtime"` is process-launch evidence returned by a probe.
 
@@ -75,24 +72,23 @@ Both routes use the same evaluator. Cases are `pass`, `fail`, or `not_verified`.
 
 ### Query results
 
-The JSON preserves the input observations and includes a flat `results` array. Each result has an `id`, human-readable `label`, `category`, `status`, `detail`, and `specSections`. The categories are `skills` and `mcp`; `mcp` includes subprocess launch checks. New checks join the appropriate category so category queries include them automatically.
+The JSON preserves the input observations and includes a flat `results` array. Each result has an `id`, human-readable `label`, `status`, `detail`, and `specSections`. IDs form a hierarchy: `skills.*` covers skills and `mcp.stdio.*` covers stdio MCP behavior. Prefix queries include new checks added within the selected scope.
 
-For example, require all MCP checks to pass:
+For example, require all stdio MCP checks to pass:
 
 ```sh
 jq -e '
-  .results
-  | map(select(.category == "mcp"))
+  [.results[] | select(.id | startswith("mcp.stdio."))]
   | length > 0 and all(.[]; .status == "pass")
 ' report.json
 ```
 
-The nonempty check prevents a misspelled category from succeeding without evaluating any cases. To exclude a particular check, change the selection to `select(.category == "mcp" and .id != "stdio.data")`. To require only particular checks, select their IDs and verify that each requested ID is present.
+The trailing dot selects a complete namespace segment. The nonempty check prevents a misspelled or absent scope from succeeding without evaluating any cases. To exclude a particular check, change the selection to `select((.id | startswith("mcp.stdio.")) and .id != "mcp.stdio.env.plugin-data-absolute")`. To require only particular checks, select their IDs and verify that each requested ID is present.
 
-List unresolved checks with their categories and descriptions:
+List unresolved checks with their descriptions:
 
 ```sh
-jq '.results[] | select(.status != "pass") | {category, id, label, status, detail}' report.json
+jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report.json
 ```
 
 ## Coverage
@@ -100,20 +96,20 @@ jq '.results[] | select(.status != "pass") | {category, id, label, status, detai
 | Case IDs | Observation checked |
 | --- | --- |
 | `skills.guide`, `skills.alpha`, `skills.beta` | Loaded skill markers, with client discovery attested by the collecting agent |
-| `mcp.default.tool`, `mcp.relative.tool`, `mcp.root.tool`, `mcp.data.tool` | A returned observation from each server |
-| `mcp.default.cwd` | Omitted `cwd` uses the package root |
-| `mcp.relative.cwd`, `mcp.root.cwd` | Relative and root-placeholder `cwd` resolve to `probe-workdir` |
-| `mcp.data.cwd` | Data-placeholder `cwd` matches the supplied data directory |
-| `stdio.root` | Supplied `PLUGIN_ROOT` matches the independently determined package root |
-| `stdio.data` | Supplied `PLUGIN_DATA` is an absolute path |
-| `stdio.env` | Configured environment values reach the subprocess |
-| `stdio.args` | Configured argument values reach the subprocess |
-| `stdio.expansion` | Repeated recognized placeholders expand and unknown placeholder-like text stays literal |
+| `mcp.stdio.tool-availability.cwd-omitted`, `mcp.stdio.tool-availability.cwd-plugin-relative`, `mcp.stdio.tool-availability.cwd-plugin-root`, `mcp.stdio.tool-availability.cwd-plugin-data` | A returned observation from each server |
+| `mcp.stdio.cwd.omitted` | Omitted `cwd` uses the package root |
+| `mcp.stdio.cwd.plugin-relative`, `mcp.stdio.cwd.plugin-root` | Relative and root-placeholder `cwd` resolve to `probe-workdir` |
+| `mcp.stdio.cwd.plugin-data` | Data-placeholder `cwd` matches the supplied data directory |
+| `mcp.stdio.env.plugin-root` | Supplied `PLUGIN_ROOT` matches the independently determined package root |
+| `mcp.stdio.env.plugin-data-absolute` | Supplied `PLUGIN_DATA` is an absolute path |
+| `mcp.stdio.env.configured-value` | Configured environment values reach the subprocess |
+| `mcp.stdio.args.preservation-and-expansion` | Configured argument values reach the subprocess |
+| `mcp.stdio.env.expansion` | Repeated recognized placeholders expand and unknown placeholder-like text stays literal |
 
 These 16 cases are deliberately narrow. An absolute data path does not prove dedicated storage, writability, or persistence across updates. A configured environment value does not prove replacement of a conflicting inherited value. The fixtures do not establish non-recursive replacement when a replacement value itself contains placeholder text. Invalid configurations, failure isolation, and remote MCP transports are deferred.
 
-The `stdio.*` checks evaluate the default-server observation. Other server observations establish only tool availability and their configured working directories.
+The `mcp.stdio.env.*` and `mcp.stdio.args.*` checks evaluate the default-server observation. Other server observations establish only tool availability and their configured working directories.
 
 ## Verification
 
-Reference runs and automated fixture tests validate the test machinery. Keep their provenance separate from observations collected through a real client's plugin support. See the repository's [verification scope](https://github.com/agentplugins/agent-plugins-conformance/blob/main/docs/verification.md) for the tested integration boundaries.
+See the repository's [verification scope](https://github.com/agentplugins/agent-plugins-conformance/blob/main/docs/verification.md) for the tested integration boundaries.

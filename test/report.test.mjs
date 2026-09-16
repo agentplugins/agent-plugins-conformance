@@ -11,7 +11,6 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   return {
     schemaVersion: 1, runId: 'test-run', client: { name: 'Test client', version: '1.0' },
-    collection: { kind: 'client', route: 'native plugin installation' },
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
@@ -36,7 +35,7 @@ test('complete valid evidence passes every case and preserves canonical bounded 
   assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 0, total: 16 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
-  assert.deepEqual(result(report, 'stdio.root').specSections, ['9.1']);
+  assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
   assert.equal(report.observations[3].evidence.argv.length, 8);
@@ -50,17 +49,21 @@ test('report bytes are deterministic across observation and property orders', ()
   assert.equal(JSON.stringify(buildReport(first)), JSON.stringify(buildReport(second)));
 });
 
-test('missing observations remain unverified and every result identifies its category and label', () => {
+test('missing observations remain unverified and every result identifies its hierarchy and label', () => {
   const value = input();
   value.observations = [];
   const report = buildReport(value);
   assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 16, total: 16 });
-  const skills = report.results.filter(({ category }) => category === 'skills');
-  const mcp = report.results.filter(({ category }) => category === 'mcp');
+  const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
+  const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.guide', 'skills.alpha', 'skills.beta']);
   assert.equal(mcp.length, 13);
-  assert.ok(mcp.some(({ id }) => id === 'stdio.root'));
-  for (const result of report.results) assert.ok(result.label.length > 0);
+  assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
+  for (const result of report.results) {
+    assert.ok(result.label.length > 0);
+    assert.equal(Object.hasOwn(result, 'category'), false);
+  }
+  assert.equal(Object.hasOwn(report, 'collection'), false);
   assert.equal(Object.hasOwn(report, 'expectedPasses'), false);
   assert.equal(Object.hasOwn(report, 'unmetExpectations'), false);
 });
@@ -69,10 +72,10 @@ test('missing default environment fails independent checks and leaves dependent 
   const value = input();
   runtime(value).env = {};
   const report = buildReport(value);
-  for (const id of ['stdio.root', 'stdio.data', 'stdio.env']) assert.equal(result(report, id).status, 'fail');
-  for (const id of ['stdio.args', 'stdio.expansion']) assert.equal(result(report, id).status, 'not_verified');
-  assert.equal(result(report, 'mcp.default.tool').status, 'pass');
-  assert.equal(result(report, 'mcp.data.cwd').status, 'pass');
+  for (const id of ['mcp.stdio.env.plugin-root', 'mcp.stdio.env.plugin-data-absolute', 'mcp.stdio.env.configured-value']) assert.equal(result(report, id).status, 'fail');
+  for (const id of ['mcp.stdio.args.preservation-and-expansion', 'mcp.stdio.env.expansion']) assert.equal(result(report, id).status, 'not_verified');
+  assert.equal(result(report, 'mcp.stdio.tool-availability.cwd-omitted').status, 'pass');
+  assert.equal(result(report, 'mcp.stdio.cwd.plugin-data').status, 'pass');
 });
 
 test('data cwd uses its own resolved evidence and unavailable resolution leaves that comparison unverified', () => {
@@ -80,10 +83,10 @@ test('data cwd uses its own resolved evidence and unavailable resolution leaves 
   runtime(value, 'data').env.PLUGIN_DATA = '/separate/data';
   runtime(value, 'data').resolvedData = '/separate/data';
   runtime(value, 'data').cwd = '/separate/data';
-  assert.equal(result(buildReport(value), 'mcp.data.cwd').status, 'pass');
+  assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'pass');
   delete runtime(value, 'data').env.PLUGIN_DATA;
   runtime(value, 'data').resolvedData = null;
-  assert.equal(result(buildReport(value), 'mcp.data.cwd').status, 'not_verified');
+  assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'not_verified');
 });
 
 test('data cwd follows resolved aliases while expansion preserves the original environment path', () => {
@@ -97,18 +100,18 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   assert.equal(report.observations[6].evidence.resolvedData, '/private/tmp/data');
   assert.equal(report.observations[3].evidence.env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
-  assert.equal(result(buildReport(value), 'mcp.data.cwd').status, 'not_verified');
-  assert.equal(result(buildReport(value), 'stdio.data').status, 'pass');
+  assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'not_verified');
+  assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, 'pass');
 });
 
 test('wrong values fail mechanically with expected and observed diagnostics', () => {
   const changes = [
-    ['stdio.root', (value) => { runtime(value).env.PLUGIN_ROOT = '/wrong'; }],
-    ['stdio.data', (value) => { runtime(value).env.PLUGIN_DATA = 'relative'; }],
-    ['stdio.env', (value) => { delete runtime(value).env.APC_VALUE; }],
-    ['stdio.args', (value) => { runtime(value).argv.splice(2, 1); }],
-    ['stdio.expansion', (value) => { runtime(value).env.APC_LITERAL = 'expanded'; }],
-    ['mcp.relative.cwd', (value) => { runtime(value, 'relative').cwd = '/wrong'; }],
+    ['mcp.stdio.env.plugin-root', (value) => { runtime(value).env.PLUGIN_ROOT = '/wrong'; }],
+    ['mcp.stdio.env.plugin-data-absolute', (value) => { runtime(value).env.PLUGIN_DATA = 'relative'; }],
+    ['mcp.stdio.env.configured-value', (value) => { delete runtime(value).env.APC_VALUE; }],
+    ['mcp.stdio.args.preservation-and-expansion', (value) => { runtime(value).argv.splice(2, 1); }],
+    ['mcp.stdio.env.expansion', (value) => { runtime(value).env.APC_LITERAL = 'expanded'; }],
+    ['mcp.stdio.cwd.plugin-relative', (value) => { runtime(value, 'relative').cwd = '/wrong'; }],
     ['skills.alpha', (value) => { value.observations[1].marker = 'wrong'; }],
   ];
   for (const [id, change] of changes) {
@@ -127,7 +130,7 @@ test('arguments preserve empty values, literal placeholders, spaces, and exact o
     (args) => args.push('extra'),
   ]) {
     const value = input(); change(runtime(value).argv);
-    assert.equal(result(buildReport(value), 'stdio.args').status, 'fail');
+    assert.equal(result(buildReport(value), 'mcp.stdio.args.preservation-and-expansion').status, 'fail');
   }
 });
 
@@ -137,7 +140,7 @@ test('path comparisons follow producing OS and normalize path components', () =>
     assert.equal(buildReport(value).summary.pass, 16);
     const flavor = root.startsWith('/') ? path.posix : path.win32;
     runtime(value).cwd = `${root}${flavor.sep}sub${flavor.sep}..`;
-    assert.equal(result(buildReport(value), 'mcp.default.cwd').status, 'pass');
+    assert.equal(result(buildReport(value), 'mcp.stdio.cwd.omitted').status, 'pass');
   }
 });
 
@@ -150,7 +153,7 @@ test('data environment must be absolute under the producing operating system pat
   ]) {
     const value = input(root);
     runtime(value).env.PLUGIN_DATA = data;
-    assert.equal(result(buildReport(value), 'stdio.data').status, expected);
+    assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, expected);
   }
 });
 
@@ -174,7 +177,7 @@ test('unknown keys, duplicate observations, identities, versions, types and over
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
     [(v) => { v.client.name = 'a'.repeat(201); }, /at most 200/],
     [(v) => { v.runId = 'x'.repeat(101); }, /at most 100/],
-    [(v) => { v.collection.kind = 'certified'; }, /expected one of/],
+    [(v) => { v.collection = { kind: 'client', route: 'installation' }; }, /input.collection: unknown field/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
@@ -194,9 +197,9 @@ test('failure diagnostics preserve value boundaries and escape control character
   delete runtime(value).env.APC_EXPANSION;
   runtime(value).env.APC_LITERAL = 'changed';
   const report = buildReport(value);
-  assert.equal(result(report, 'stdio.env').detail,
+  assert.equal(result(report, 'mcp.stdio.env.configured-value').detail,
     'APC_VALUE: expected "fixture value with spaces"; observed "wrong\\nvalue".');
-  const expansion = result(report, 'stdio.expansion').detail;
+  const expansion = result(report, 'mcp.stdio.env.expansion').detail;
   assert.match(expansion, /APC_EXPANSION: expected .*; observed missing/);
   assert.match(expansion, /APC_LITERAL: expected .*; observed "changed"/);
   assert.ok(!expansion.includes('undefined'));

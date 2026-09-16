@@ -1,9 +1,9 @@
 import path from 'node:path';
-import { CASES } from './cases.mjs';
+import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
 export const MAX_INPUT_BYTES = 262144;
-const SERVERS = ['default', 'relative', 'root', 'data'];
+const SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const SKILLS = {
   'conformance-guide': ['skills.guide', 'APC_GUIDE_V1'],
   'conformance-alpha': ['skills.alpha', 'APC_ALPHA_V1'],
@@ -56,16 +56,13 @@ function samePath(actual, expected, flavor) {
 }
 
 function validate(input) {
-  object(input, ['schemaVersion', 'runId', 'client', 'collection', 'observations'],
-    ['schemaVersion', 'runId', 'client', 'collection', 'observations'], 'input');
+  object(input, ['schemaVersion', 'runId', 'client', 'observations'],
+    ['schemaVersion', 'runId', 'client', 'observations'], 'input');
   if (input.schemaVersion !== 1) invalid('input.schemaVersion', 'expected 1');
   string(input.runId, 'input.runId', 100);
   object(input.client, ['name', 'version'], ['name', 'version'], 'input.client');
   string(input.client.name, 'input.client.name', 200);
   string(input.client.version, 'input.client.version', 200);
-  object(input.collection, ['kind', 'route'], ['kind', 'route'], 'input.collection');
-  member(input.collection.kind, ['client', 'reference'], 'input.collection.kind');
-  string(input.collection.route, 'input.collection.route', 500);
   array(input.observations, 7, 'input.observations');
   const runtime = new Map();
   const skills = new Map();
@@ -122,15 +119,15 @@ export function buildReport(input) {
       'Agent reported the expected client-loaded skill marker.', mismatch('Skill marker', marker, skills.get(skill)));
   }
   for (const [server, evidence] of runtime) {
-    set(`mcp.${server}.tool`, 'pass', 'Valid runtime evidence supplied for this server and run.');
+    set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server and run.');
     const flavor = pathFlavor(evidence.root);
     const target = server === 'default' ? evidence.root
       : server === 'data' ? evidence.resolvedData
       : flavor.join(evidence.root, 'probe-workdir');
     if (target === null) {
-      set(`mcp.${server}.cwd`, 'not_verified', 'PLUGIN_DATA could not be resolved; the expected working directory is unavailable.');
+      set(`mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}`, 'not_verified', 'PLUGIN_DATA could not be resolved; the expected working directory is unavailable.');
     } else {
-      check(`mcp.${server}.cwd`, samePath(evidence.cwd, target, flavor),
+      check(`mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}`, samePath(evidence.cwd, target, flavor),
         'Working directory matches the resolved expected path.', mismatch('Working directory', target, evidence.cwd));
     }
   }
@@ -138,19 +135,19 @@ export function buildReport(input) {
   if (evidence) {
     const { root, env, argv } = evidence;
     const flavor = pathFlavor(root);
-    check('stdio.root', samePath(env.PLUGIN_ROOT, root, flavor),
+    check('mcp.stdio.env.plugin-root', samePath(env.PLUGIN_ROOT, root, flavor),
       'PLUGIN_ROOT is absolute and matches the independently computed root.', mismatch('PLUGIN_ROOT', root, env.PLUGIN_ROOT));
-    check('stdio.data', typeof env.PLUGIN_DATA === 'string' && flavor.isAbsolute(env.PLUGIN_DATA),
+    check('mcp.stdio.env.plugin-data-absolute', typeof env.PLUGIN_DATA === 'string' && flavor.isAbsolute(env.PLUGIN_DATA),
       'PLUGIN_DATA is an absolute path for the producing operating system.',
       `PLUGIN_DATA: expected an absolute ${flavor === path.win32 ? 'Windows' : 'POSIX'} path; observed ${env.PLUGIN_DATA === undefined ? 'missing' : JSON.stringify(env.PLUGIN_DATA)}.`);
-    check('stdio.env', env.APC_VALUE === 'fixture value with spaces',
+    check('mcp.stdio.env.configured-value', env.APC_VALUE === 'fixture value with spaces',
       'Configured environment value is preserved.', mismatch('APC_VALUE', 'fixture value with spaces', env.APC_VALUE));
     if (env.PLUGIN_DATA === undefined) {
-      for (const id of ['stdio.args', 'stdio.expansion']) set(id, 'not_verified', 'PLUGIN_DATA is missing; expected expansion cannot be computed.');
+      for (const id of ['mcp.stdio.args.preservation-and-expansion', 'mcp.stdio.env.expansion']) set(id, 'not_verified', 'PLUGIN_DATA is missing; expected expansion cannot be computed.');
     } else {
       const expectedArgv = ['default', 'arg with spaces', '', root, env.PLUGIN_DATA,
         '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'];
-      check('stdio.args', argv.length === expectedArgv.length && argv.every((arg, i) => arg === expectedArgv[i]),
+      check('mcp.stdio.args.preservation-and-expansion', argv.length === expectedArgv.length && argv.every((arg, i) => arg === expectedArgv[i]),
         'Arguments preserve boundaries and apply only the specified expansion.', mismatch('Arguments', expectedArgv, argv));
       const expectedExpansion = {
         APC_EXPANSION: `${root}|${env.PLUGIN_DATA}|${root}`,
@@ -159,12 +156,12 @@ export function buildReport(input) {
       const differences = Object.entries(expectedExpansion)
         .filter(([key, expected]) => env[key] !== expected)
         .map(([key, expected]) => mismatch(key, expected, env[key]));
-      check('stdio.expansion', differences.length === 0,
+      check('mcp.stdio.env.expansion', differences.length === 0,
         'Environment values apply only the specified expansion.', differences.join(' '));
     }
   }
-  const ordered = CASES.map(({ id, label, category, specSections }) => ({
-    ...results.get(id), label, category, specSections: [...specSections],
+  const ordered = CASES.map(({ id, label, specSections }) => ({
+    ...results.get(id), label, specSections: [...specSections],
   }));
   const summary = { pass: 0, fail: 0, not_verified: 0, total: ordered.length };
   for (const result of ordered) summary[result.status] += 1;
@@ -173,7 +170,6 @@ export function buildReport(input) {
     specVersion: '1.0.0',
     runId: input.runId,
     client: { name: input.client.name, version: input.client.version },
-    collection: { kind: input.collection.kind, route: input.collection.route },
     observations: [
       ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
         kind: 'skill', skill, marker: skills.get(skill),
@@ -192,7 +188,6 @@ export function buildReport(input) {
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
       'Skill markers are agent assertions about client-loaded skills, not proof of loading.',
-      ...(input.collection.kind === 'reference' ? ['Reference collection tests the fixture and cannot count as client certification.'] : []),
       'Working directories use normalized absolute paths under the producing operating system path rules and the data path resolved by the probe; the reporter performs no filesystem lookup.',
     ],
   };
@@ -209,11 +204,12 @@ export function formatReport(report) {
   const lines = [
     `Agent Plugins conformance — spec ${safe(report.specVersion)}`,
     `Client: ${safe(report.client.name)}, version ${safe(report.client.version)}`,
+    `Run: ${safe(report.runId)}`,
     '',
     row('Checks', 'Passed', 'Failed', 'Not verified'),
   ];
-  for (const [category, label] of [['skills', 'Skills'], ['mcp', 'MCP']]) {
-    const results = report.results.filter((result) => result.category === category);
+  for (const [prefix, label] of [['skills.', 'Skills'], ['mcp.', 'MCP']]) {
+    const results = report.results.filter((result) => result.id.startsWith(prefix));
     const count = (status) => results.filter((result) => result.status === status).length;
     lines.push(row(label, count('pass'), count('fail'), count('not_verified')));
   }
@@ -235,16 +231,12 @@ export function formatReport(report) {
     if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(', ')} — no runtime observations.`);
     for (const { id, label, detail } of unverified) {
       const grouped = missingSkills.some((skill) => SKILLS[skill][0] === id) ||
-        missingServers.some((server) => id.startsWith(`mcp.${server}.`) || (server === 'default' && id.startsWith('stdio.')));
+        missingServers.some((server) =>
+          id === `mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}` ||
+          id === `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}` ||
+          (server === 'default' && (id.startsWith('mcp.stdio.env.') || id.startsWith('mcp.stdio.args.'))));
       if (!grouped) lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
     }
   }
-  lines.push('',
-    `Run: ${safe(report.runId)}`,
-    `Evidence source: ${safe(report.collection.kind)} run — ${safe(report.collection.route)}`,
-    report.collection.kind === 'reference'
-      ? 'Scope: fixture observations only; does not establish client conformance.'
-      : 'Scope: submitted observations; skill loading is agent-reported. Selected checks only.',
-  );
   return lines.join('\n');
 }
