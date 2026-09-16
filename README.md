@@ -25,4 +25,4 @@ pnpm check
 
 The root development package builds and tests the plugins. To evaluate saved core observations from the repository root, run `pnpm report observations.json` (add `--json` for the structured report).
 
-See [verification scope](docs/verification.md) for the automated integration boundaries and bounded native-client prototype.
+See [verification scope](docs/verification.md) for the automated integration boundaries and native portable-plugin exercise.
