@@ -6,9 +6,7 @@ export const MCP_CWD_VARIANTS = Object.freeze({
 });
 
 export const CASES = Object.freeze([
-  ['skills.guide', 'Guide skill marker', ['6.1', '7.1']],
-  ['skills.alpha', 'Alpha skill marker', ['6.1', '7.1']],
-  ['skills.beta', 'Beta skill marker', ['6.1', '7.1']],
+  ['skills.discovery.immediate-children', 'Immediate child skill discovery', ['6.1', '7.1']],
   ...Object.entries(MCP_CWD_VARIANTS).flatMap(([server, variant]) => [
     [`mcp.stdio.tool-availability.cwd-${variant}`, `${server} MCP tool evidence`, ['6.1', '7.2.1']],
     [`mcp.stdio.cwd.${variant}`, `${server} working directory`, ['7.2.1']],

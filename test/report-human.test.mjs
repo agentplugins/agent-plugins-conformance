@@ -10,7 +10,7 @@ function input() {
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
-        kind: 'runtime', server,
+        kind: 'mcp-stdio', server,
         evidence: {
           version: 1, runId: 'test-run', server, root, resolvedData: data,
           cwd: server === 'default' ? root : server === 'data' ? data : `${root}/probe-workdir`,
@@ -31,7 +31,7 @@ test('all-pass human report contains a compact check table and no empty sections
     'Run: test-run',
     '',
     'Checks       Passed  Failed  Not verified',
-    'Skills            3       0             0',
+    'Skills            1       0             0',
     'MCP              13       0             0',
   ].join('\n'));
 });
@@ -40,11 +40,11 @@ test('all-unverified human report groups absent observations by component', () =
   const value = input();
   value.observations = [];
   const human = formatReport(buildReport(value));
-  assert.match(human, /Skills\s+0\s+0\s+3/);
+  assert.match(human, /Skills\s+0\s+0\s+1/);
   assert.match(human, /MCP\s+0\s+0\s+13/);
-  assert.match(human, /Skills: conformance-guide, conformance-alpha, conformance-beta — no observations\./);
-  assert.match(human, /MCP servers: default, relative, root, data — no runtime observations\./);
-  assert.doesNotMatch(human, /not_verified|No observation supplied|\nFailed\n|\(mcp\.|\(skills\./);
+  assert.match(human, /Missing skill observations: conformance-guide, conformance-alpha, conformance-beta\./);
+  assert.match(human, /MCP servers: default, relative, root, data — no stdio MCP observations\./);
+  assert.doesNotMatch(human, /not_verified|No observation supplied|\nFailed\n|\(mcp\./);
 });
 
 test('mixed human report puts useful failures before grouped missing observations', () => {
@@ -57,7 +57,7 @@ test('mixed human report puts useful failures before grouped missing observation
   assert.match(human, /"fixture value with spaces"/);
   assert.match(human, /"incorrect configured value"/);
   assert.ok(human.indexOf('\nFailed\n') < human.indexOf('\nNot verified\n'));
-  assert.match(human, /MCP servers: relative, root, data — no runtime observations\./);
+  assert.match(human, /MCP servers: relative, root, data — no stdio MCP observations\./);
   assert.doesNotMatch(human, /MCP servers: default/);
 });
 
@@ -71,7 +71,7 @@ test('unverified checks with supplied observations keep their individual reasons
   assert.match(human, /data working directory \(mcp.stdio.cwd.plugin-data\)/);
   assert.match(human, /PLUGIN_DATA is missing; expected expansion cannot be computed\./);
   assert.match(human, /PLUGIN_DATA could not be resolved/);
-  assert.doesNotMatch(human, /no observations|no runtime observations/);
+  assert.doesNotMatch(human, /no observations|no stdio MCP observations/);
 });
 
 test('human metadata and diagnostic values cannot inject terminal controls or fake lines', () => {
@@ -79,7 +79,7 @@ test('human metadata and diagnostic values cannot inject terminal controls or fa
   value.client.name = 'Client\nFAKE PASS';
   value.client.version = '1\r2';
   value.runId = 'run\tname\x1b[2J\x7f';
-  for (const observation of value.observations.filter(({ kind }) => kind === 'runtime')) observation.evidence.runId = value.runId;
+  for (const observation of value.observations.filter(({ kind }) => kind === 'mcp-stdio')) observation.evidence.runId = value.runId;
   value.observations[3].evidence.env.APC_VALUE = 'wrong\nFAKE PASS\x1b[2J\x85';
   const human = formatReport(buildReport(value));
   assert.match(human, /Client: Client\\nFAKE PASS, version 1\\r2/);
@@ -102,14 +102,31 @@ test('partial runtime coverage never hides reasons from servers with supplied ob
     const human = formatReport(report);
     const missing = servers.filter((_, index) => !(included & (1 << index)));
     if (missing.length) {
-      assert.ok(human.includes(`MCP servers: ${missing.join(', ')} — no runtime observations.`));
+      assert.ok(human.includes(`MCP servers: ${missing.join(', ')} — no stdio MCP observations.`));
     } else {
-      assert.doesNotMatch(human, /no runtime observations/);
+      assert.doesNotMatch(human, /no stdio MCP observations/);
     }
     for (const { id, status, detail } of report.results) {
       if (status !== 'not_verified') continue;
       assert.equal(human.includes(`(${id})`), detail !== 'No observation supplied.', id);
     }
     assert.doesNotMatch(human, /No observation supplied/);
+  }
+});
+
+
+test('failed skill discovery shows incorrect and missing skills together regardless of MCP coverage', () => {
+  for (const includeMcp of [false, true]) {
+    const value = input();
+    value.observations[0].marker = 'incorrect guide';
+    value.observations.splice(1, 1);
+    if (!includeMcp) value.observations = value.observations.filter(({ kind }) => kind === 'skill');
+    const human = formatReport(buildReport(value));
+    const failed = human.split('\nFailed\n')[1].split('\nNot verified\n')[0];
+    assert.match(failed, /Immediate child skill discovery \(skills.discovery.immediate-children\)/);
+    assert.match(failed, /conformance-guide: expected "APC_GUIDE_V1"; observed "incorrect guide"/);
+    assert.match(failed, /Missing skill observations: conformance-alpha\./);
+    assert.doesNotMatch(human, /Skills: .*no observations/);
+    if (includeMcp) assert.doesNotMatch(human, /\nNot verified\n/);
   }
 });

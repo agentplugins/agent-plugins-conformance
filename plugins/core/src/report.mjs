@@ -5,9 +5,9 @@ export { CASES, CASE_IDS } from './cases.mjs';
 export const MAX_INPUT_BYTES = 262144;
 const SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const SKILLS = {
-  'conformance-guide': ['skills.guide', 'APC_GUIDE_V1'],
-  'conformance-alpha': ['skills.alpha', 'APC_ALPHA_V1'],
-  'conformance-beta': ['skills.beta', 'APC_BETA_V1'],
+  'conformance-guide': 'APC_GUIDE_V1',
+  'conformance-alpha': 'APC_ALPHA_V1',
+  'conformance-beta': 'APC_BETA_V1',
 };
 const ENV_KEYS = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
 
@@ -69,11 +69,11 @@ function validate(input) {
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
     object(observation, ['kind', 'server', 'evidence', 'skill', 'marker'], ['kind'], at);
-    member(observation.kind, ['runtime', 'skill'], `${at}.kind`);
-    if (observation.kind === 'runtime') {
+    member(observation.kind, ['mcp-stdio', 'skill'], `${at}.kind`);
+    if (observation.kind === 'mcp-stdio') {
       object(observation, ['kind', 'server', 'evidence'], ['kind', 'server', 'evidence'], at);
       member(observation.server, SERVERS, `${at}.server`);
-      if (runtime.has(observation.server)) invalid(at, `duplicate runtime observation: ${observation.server}`);
+      if (runtime.has(observation.server)) invalid(at, `duplicate mcp-stdio observation: ${observation.server}`);
       const evidenceAt = `${at}.evidence`;
       const evidence = observation.evidence;
       const keys = ['version', 'runId', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
@@ -114,10 +114,14 @@ export function buildReport(input) {
   const mismatch = (field, expected, observed) =>
     `${field}: expected ${JSON.stringify(expected)}; observed ${observed === undefined ? 'missing' : JSON.stringify(observed)}.`;
 
-  for (const [skill, [id, marker]] of Object.entries(SKILLS)) {
-    if (skills.has(skill)) check(id, skills.get(skill) === marker,
-      'Agent reported the expected client-loaded skill marker.', mismatch('Skill marker', marker, skills.get(skill)));
-  }
+  const missingSkills = Object.keys(SKILLS).filter((skill) => !skills.has(skill));
+  const wrongSkills = Object.entries(SKILLS)
+    .filter(([skill, marker]) => skills.has(skill) && skills.get(skill) !== marker)
+    .map(([skill, marker]) => mismatch(`Skill marker for ${skill}`, marker, skills.get(skill)));
+  const skillDetails = [...wrongSkills];
+  if (missingSkills.length) skillDetails.push(`Missing skill observations: ${missingSkills.join(', ')}.`);
+  set('skills.discovery.immediate-children', wrongSkills.length ? 'fail' : missingSkills.length ? 'not_verified' : 'pass',
+    skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for all three immediate child skills.');
   for (const [server, evidence] of runtime) {
     set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server and run.');
     const flavor = pathFlavor(evidence.root);
@@ -176,7 +180,7 @@ export function buildReport(input) {
       })),
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
-        return { kind: 'runtime', server, evidence: {
+        return { kind: 'mcp-stdio', server, evidence: {
           version: evidence.version, runId: evidence.runId, server: evidence.server,
           root: evidence.root, cwd: evidence.cwd, resolvedData: evidence.resolvedData, argv: [...evidence.argv],
           env: Object.fromEntries(ENV_KEYS.filter((key) => Object.hasOwn(evidence.env, key)).map((key) => [key, evidence.env[key]])),
@@ -223,18 +227,14 @@ export function formatReport(report) {
   const unverified = report.results.filter(({ status }) => status === 'not_verified');
   if (unverified.length) {
     lines.push('', 'Not verified');
-    const skills = new Set(report.observations.filter(({ kind }) => kind === 'skill').map(({ skill }) => skill));
-    const servers = new Set(report.observations.filter(({ kind }) => kind === 'runtime').map(({ server }) => server));
-    const missingSkills = Object.keys(SKILLS).filter((skill) => !skills.has(skill));
+    const servers = new Set(report.observations.filter(({ kind }) => kind === 'mcp-stdio').map(({ server }) => server));
     const missingServers = SERVERS.filter((server) => !servers.has(server));
-    if (missingSkills.length) lines.push(`  Skills: ${missingSkills.join(', ')} — no observations.`);
-    if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(', ')} — no runtime observations.`);
+    if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(', ')} — no stdio MCP observations.`);
     for (const { id, label, detail } of unverified) {
-      const grouped = missingSkills.some((skill) => SKILLS[skill][0] === id) ||
-        missingServers.some((server) =>
-          id === `mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}` ||
-          id === `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}` ||
-          (server === 'default' && (id.startsWith('mcp.stdio.env.') || id.startsWith('mcp.stdio.args.'))));
+      const grouped = missingServers.some((server) =>
+        id === `mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}` ||
+        id === `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}` ||
+        (server === 'default' && (id.startsWith('mcp.stdio.env.') || id.startsWith('mcp.stdio.args.'))));
       if (!grouped) lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
     }
   }

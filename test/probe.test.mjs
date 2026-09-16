@@ -68,7 +68,7 @@ test('copied plugin runs MCP probes and CLI reporting without node_modules', { t
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 13);
-  assert.equal(direct.summary.not_verified, 3);
+  assert.equal(direct.summary.not_verified, 1);
   const result = await defaultClient.callTool({ name: 'report', arguments: { input: reportInput } });
   assert.deepEqual(result.structuredContent, direct);
   assert.deepEqual(JSON.parse(result.content[1].text), direct);

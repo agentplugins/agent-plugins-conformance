@@ -14,7 +14,7 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
-        kind: 'runtime', server,
+        kind: 'mcp-stdio', server,
         evidence: {
           version: 1, runId: 'test-run', server, root, resolvedData: data,
           cwd: server === 'default' ? root : server === 'data' ? data : flavor.join(root, 'probe-workdir'),
@@ -32,7 +32,7 @@ const result = (report, id) => report.results.find((item) => item.id === id);
 test('complete valid evidence passes every case and preserves canonical bounded evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 0, total: 16 });
+  assert.deepEqual(report.summary, { pass: 14, fail: 0, not_verified: 0, total: 14 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -53,10 +53,10 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 16, total: 16 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 14, total: 14 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
-  assert.deepEqual(skills.map(({ id }) => id), ['skills.guide', 'skills.alpha', 'skills.beta']);
+  assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children']);
   assert.equal(mcp.length, 13);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
@@ -91,12 +91,12 @@ test('data cwd uses its own resolved evidence and unavailable resolution leaves 
 
 test('data cwd follows resolved aliases while expansion preserves the original environment path', () => {
   const value = input('/fixture/plugin', '/tmp/data');
-  for (const observation of value.observations.filter(({ kind }) => kind === 'runtime')) {
+  for (const observation of value.observations.filter(({ kind }) => kind === 'mcp-stdio')) {
     observation.evidence.resolvedData = '/private/tmp/data';
   }
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
-  assert.equal(report.summary.pass, 16);
+  assert.equal(report.summary.pass, 14);
   assert.equal(report.observations[6].evidence.resolvedData, '/private/tmp/data');
   assert.equal(report.observations[3].evidence.env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
@@ -112,7 +112,7 @@ test('wrong values fail mechanically with expected and observed diagnostics', ()
     ['mcp.stdio.args.preservation-and-expansion', (value) => { runtime(value).argv.splice(2, 1); }],
     ['mcp.stdio.env.expansion', (value) => { runtime(value).env.APC_LITERAL = 'expanded'; }],
     ['mcp.stdio.cwd.plugin-relative', (value) => { runtime(value, 'relative').cwd = '/wrong'; }],
-    ['skills.alpha', (value) => { value.observations[1].marker = 'wrong'; }],
+    ['skills.discovery.immediate-children', (value) => { value.observations[1].marker = 'wrong'; }],
   ];
   for (const [id, change] of changes) {
     const value = input(); change(value);
@@ -137,7 +137,7 @@ test('arguments preserve empty values, literal placeholders, spaces, and exact o
 test('path comparisons follow producing OS and normalize path components', () => {
   for (const [root, data] of [['/plugin with spaces', '/data with spaces'], ['C:\\plugin', 'D:\\data'], ['\\\\host\\share\\plugin', '\\\\host\\share\\data']]) {
     const value = input(root, data);
-    assert.equal(buildReport(value).summary.pass, 16);
+    assert.equal(buildReport(value).summary.pass, 14);
     const flavor = root.startsWith('/') ? path.posix : path.win32;
     runtime(value).cwd = `${root}${flavor.sep}sub${flavor.sep}..`;
     assert.equal(result(buildReport(value), 'mcp.stdio.cwd.omitted').status, 'pass');
@@ -162,7 +162,7 @@ test('unknown keys, duplicate observations, identities, versions, types and over
     [(v) => { v.status = 'pass'; }, /input.status: unknown field/],
     [(v) => { v.expectedPasses = []; }, /input.expectedPasses: unknown field/],
     [(v) => { v.unmetExpectations = []; }, /input.unmetExpectations: unknown field/],
-    [(v) => { v.observations[4] = v.observations[3]; }, /duplicate runtime/],
+    [(v) => { v.observations[4] = v.observations[3]; }, /duplicate mcp-stdio/],
     [(v) => { v.observations[1] = v.observations[0]; }, /duplicate skill/],
     [(v) => { runtime(v).env.SECRET = 'not allowed'; }, /unknown field/],
     [(v) => { runtime(v).server = 'other'; }, /must match observation.server/],
@@ -179,13 +179,14 @@ test('unknown keys, duplicate observations, identities, versions, types and over
     [(v) => { v.runId = 'x'.repeat(101); }, /at most 100/],
     [(v) => { v.collection = { kind: 'client', route: 'installation' }; }, /input.collection: unknown field/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
+    [(v) => { v.observations[3].kind = 'runtime'; }, /expected one of: mcp-stdio, skill/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
 });
 
 test('oversized total input is rejected even if individual values fit bounds', () => {
   const value = input();
-  for (const observation of value.observations.filter(({ kind }) => kind === 'runtime')) {
+  for (const observation of value.observations.filter(({ kind }) => kind === 'mcp-stdio')) {
     observation.evidence.argv = Array(32).fill('a'.repeat(4096));
   }
   assert.throws(() => buildReport(value), /exceeds 262144 bytes/);
@@ -227,7 +228,7 @@ test('CLI succeeds for evaluated outcomes and reserves nonzero exit for report e
     await writeFile(filename, JSON.stringify(value));
     const missing = run(filename, '--json');
     assert.equal(missing.status, 0, missing.stderr);
-    assert.equal(JSON.parse(missing.stdout).summary.not_verified, 16);
+    assert.equal(JSON.parse(missing.stdout).summary.not_verified, 14);
     assert.equal(run(filename).status, 0);
     await writeFile(filename, JSON.stringify({ ...value, observations: 'invalid' }));
     assert.equal(run(filename, '--json').status, 2);
@@ -236,4 +237,41 @@ test('CLI succeeds for evaluated outcomes and reserves nonzero exit for report e
     assert.equal(run(filename, '--unknown').status, 2);
     assert.match(run().stderr, /Usage:/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test('skill discovery aggregate requires all immediate child skills and preserves partial observations', () => {
+  for (let included = 0; included < 8; included += 1) {
+    const value = input();
+    value.observations = value.observations.filter(({ kind }, index) =>
+      kind !== 'skill' || (included & (1 << index)));
+    const report = buildReport(value);
+    const discovery = result(report, 'skills.discovery.immediate-children');
+    assert.equal(discovery.status, included === 7 ? 'pass' : 'not_verified');
+    assert.deepEqual(report.observations, value.observations);
+    for (const [index, skill] of ['guide', 'alpha', 'beta'].entries()) {
+      if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
+    }
+    assert.equal(report.summary.total, 14);
+    assert.equal(report.summary.fail, 0);
+    assert.equal(report.summary.not_verified, included === 7 ? 0 : 1);
+  }
+});
+
+test('incorrect skill markers fail the aggregate even when another skill is missing', () => {
+  for (const missing of [false, true]) {
+    const value = input();
+    value.observations[0].marker = 'wrong guide';
+    value.observations[1].marker = 'wrong alpha';
+    if (missing) value.observations.splice(2, 1);
+    const report = buildReport(value);
+    const discovery = result(report, 'skills.discovery.immediate-children');
+    assert.equal(discovery.status, 'fail');
+    assert.match(discovery.detail, /conformance-guide: expected "APC_GUIDE_V1"; observed "wrong guide"/);
+    assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
+    assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
+    assert.deepEqual(report.summary, { pass: 13, fail: 1, not_verified: 0, total: 14 });
+    value.observations.reverse();
+    assert.equal(JSON.stringify(buildReport(value)), JSON.stringify(report));
+  }
 });

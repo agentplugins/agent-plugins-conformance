@@ -37,14 +37,14 @@ Find the `observe` tool on each server: `default`, `relative`, `root`, and `data
 Each call returns a JSON observation shaped as:
 
 ```text
-{kind: "runtime", server, evidence: {version: 1, runId, server, root, cwd, resolvedData, argv, env}}
+{kind: "mcp-stdio", server, evidence: {version: 1, runId, server, root, cwd, resolvedData, argv, env}}
 ```
 
-Take the observation object from the tool result's `structuredContent` (shown as `structured_content` by some clients), or parse the JSON in its text content. The observation begins with `{"kind":"runtime","server":...}`. Copy that object unchanged into the report's `observations` array; do not include the MCP result wrapper containing `content` or `structuredContent`.
+Take the observation object from the tool result's `structuredContent` (shown as `structured_content` by some clients), or parse the JSON in its text content. The observation begins with `{"kind":"mcp-stdio","server":...}`. Copy that object unchanged into the report's `observations` array; do not include the MCP result wrapper containing `content` or `structuredContent`.
 
 Preserve every observation field. Do not reconstruct expected paths, repair observed values, or replace the returned evidence with a pass/fail judgment. The probe determines its package root from the bundle's location independently of the client's environment variables. It resolves both the observed working directory (`cwd`) and the supplied data directory for directory-identity comparisons; the original environment value is preserved for expansion checks.
 
-Omit observations that you cannot obtain. Describe unavailable skills, missing tools, or failed calls alongside the report. Missing observations become `not_verified`; they do not establish a failure or an exemption from the specification.
+Omit observations that you cannot obtain. Describe unavailable skills, missing tools, or failed calls alongside the report. Missing observations do not establish a failure or an exemption from the specification. Skill discovery passes when all three markers are correct, fails if any supplied marker is wrong, and otherwise remains `not_verified`. Its detail identifies missing and incorrect skills; the individual observations are preserved. Other missing observations become `not_verified`.
 
 ## Evaluate a run
 
@@ -59,7 +59,7 @@ Start with this empty-evidence input and replace the run and client details:
 }
 ```
 
-`observations[].kind` identifies the evidence shape: `"skill"` is a loaded skill marker reported by the agent; `"runtime"` is process-launch evidence returned by a probe.
+`observations[].kind` identifies the evidence shape: `"skill"` is a loaded skill marker reported by the agent; `"mcp-stdio"` is process-launch evidence returned by a probe.
 
 Submit the object to the `default` server's `report` tool as `{"input": <report input object>}`. This supports clients without a local shell. Alternatively, save it as `observations.json` and run from the plugin directory:
 
@@ -95,7 +95,7 @@ jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report
 
 | Case IDs | Observation checked |
 | --- | --- |
-| `skills.guide`, `skills.alpha`, `skills.beta` | Loaded skill markers, with client discovery attested by the collecting agent |
+| `skills.discovery.immediate-children` | All three immediate child skill markers, with client discovery attested by the collecting agent |
 | `mcp.stdio.tool-availability.cwd-omitted`, `mcp.stdio.tool-availability.cwd-plugin-relative`, `mcp.stdio.tool-availability.cwd-plugin-root`, `mcp.stdio.tool-availability.cwd-plugin-data` | A returned observation from each server |
 | `mcp.stdio.cwd.omitted` | Omitted `cwd` uses the package root |
 | `mcp.stdio.cwd.plugin-relative`, `mcp.stdio.cwd.plugin-root` | Relative and root-placeholder `cwd` resolve to `probe-workdir` |
@@ -106,7 +106,7 @@ jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report
 | `mcp.stdio.args.preservation-and-expansion` | Configured argument values reach the subprocess |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand and unknown placeholder-like text stays literal |
 
-These 16 cases are deliberately narrow. An absolute data path does not prove dedicated storage, writability, or persistence across updates. A configured environment value does not prove replacement of a conflicting inherited value. The fixtures do not establish non-recursive replacement when a replacement value itself contains placeholder text. Invalid configurations, failure isolation, and remote MCP transports are deferred.
+These 14 cases are deliberately narrow. An absolute data path does not prove dedicated storage, writability, or persistence across updates. A configured environment value does not prove replacement of a conflicting inherited value. The fixtures do not establish non-recursive replacement when a replacement value itself contains placeholder text. Invalid configurations, failure isolation, and remote MCP transports are deferred.
 
 The `mcp.stdio.env.*` and `mcp.stdio.args.*` checks evaluate the default-server observation. Other server observations establish only tool availability and their configured working directories.
 

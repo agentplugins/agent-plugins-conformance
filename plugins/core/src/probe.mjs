@@ -38,7 +38,7 @@ const observeTool = {
 };
 const reportTool = {
   name: 'report',
-  description: 'Evaluate collected observations and return one deterministic report in JSON and human-readable form. Missing observations become not_verified. Never execute probes to fill missing observations.',
+  description: 'Evaluate collected observations and return one deterministic report in JSON and human-readable form. Never execute probes to fill missing observations.',
   inputSchema: { type: 'object', properties: { input: { type: 'object', description: 'Report input: schemaVersion 1, runId, client {name,version}, observations array of unchanged observe results or client-discovered skill markers.' } }, required: ['input'], additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
@@ -50,7 +50,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       if (!args || Object.keys(args).length !== 1 || typeof args.runId !== 'string' || !args.runId.trim() || args.runId.length > 100) {
         throw new Error('observe requires only a nonempty runId string of at most 100 characters');
       }
-      const observation = { kind: 'runtime', server: serverName, evidence: { version: 1, runId: args.runId, ...launch } };
+      const observation = { kind: 'mcp-stdio', server: serverName, evidence: { version: 1, runId: args.runId, ...launch } };
       return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
     }
     if (params.name === 'report' && serverName === 'default') {
