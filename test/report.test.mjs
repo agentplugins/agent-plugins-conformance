@@ -5,14 +5,13 @@ import os from 'node:os';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildReport, formatReport, reportExitCode, CASE_IDS } from '../plugins/core/src/report.mjs';
+import { buildReport, formatReport, CASE_IDS } from '../plugins/core/src/report.mjs';
 
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   return {
     schemaVersion: 1, runId: 'test-run', client: { name: 'Test client', version: '1.0' },
     collection: { kind: 'client', route: 'native plugin installation' },
-    expectedPasses: [...CASE_IDS],
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
@@ -41,29 +40,29 @@ test('complete valid evidence passes every case and preserves canonical bounded 
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
   assert.equal(report.observations[3].evidence.argv.length, 8);
-  assert.equal(reportExitCode(report), 0);
 });
 
-test('report bytes are deterministic across observation, expectation, and property orders', () => {
+test('report bytes are deterministic across observation and property orders', () => {
   const first = input();
   const second = input();
   second.observations.reverse();
-  second.expectedPasses.reverse();
   runtime(second).env = Object.fromEntries(Object.entries(runtime(second).env).reverse());
   assert.equal(JSON.stringify(buildReport(first)), JSON.stringify(buildReport(second)));
 });
 
-test('missing observations remain unverified and expectations affect exit without changing status', () => {
+test('missing observations remain unverified and every result identifies its category and label', () => {
   const value = input();
   value.observations = [];
-  value.expectedPasses = [];
-  assert.equal(buildReport(value).summary.not_verified, 16);
-  assert.equal(reportExitCode(buildReport(value)), 0);
-  value.expectedPasses = ['stdio.root'];
   const report = buildReport(value);
-  assert.equal(result(report, 'stdio.root').status, 'not_verified');
-  assert.deepEqual(report.unmetExpectations, ['stdio.root']);
-  assert.equal(reportExitCode(report), 1);
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 16, total: 16 });
+  const skills = report.results.filter(({ category }) => category === 'skills');
+  const mcp = report.results.filter(({ category }) => category === 'mcp');
+  assert.deepEqual(skills.map(({ id }) => id), ['skills.guide', 'skills.alpha', 'skills.beta']);
+  assert.equal(mcp.length, 13);
+  assert.ok(mcp.some(({ id }) => id === 'stdio.root'));
+  for (const result of report.results) assert.ok(result.label.length > 0);
+  assert.equal(Object.hasOwn(report, 'expectedPasses'), false);
+  assert.equal(Object.hasOwn(report, 'unmetExpectations'), false);
 });
 
 test('missing default environment fails independent checks and leaves dependent expansion unverified', () => {
@@ -102,7 +101,7 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   assert.equal(result(buildReport(value), 'stdio.data').status, 'pass');
 });
 
-test('wrong values fail mechanically even with no expectations', () => {
+test('wrong values fail mechanically with expected and observed diagnostics', () => {
   const changes = [
     ['stdio.root', (value) => { runtime(value).env.PLUGIN_ROOT = '/wrong'; }],
     ['stdio.data', (value) => { runtime(value).env.PLUGIN_DATA = 'relative'; }],
@@ -113,10 +112,10 @@ test('wrong values fail mechanically even with no expectations', () => {
     ['skills.alpha', (value) => { value.observations[1].marker = 'wrong'; }],
   ];
   for (const [id, change] of changes) {
-    const value = input(); value.expectedPasses = []; change(value);
+    const value = input(); change(value);
     const report = buildReport(value);
     assert.equal(result(report, id).status, 'fail', id);
-    assert.equal(reportExitCode(report), 1, id);
+    assert.match(result(report, id).detail, /expected .*; observed /, id);
   }
 });
 
@@ -158,8 +157,8 @@ test('data environment must be absolute under the producing operating system pat
 test('unknown keys, duplicate observations, identities, versions, types and oversized values are rejected', () => {
   const invalid = [
     [(v) => { v.status = 'pass'; }, /input.status: unknown field/],
-    [(v) => { v.expectedPasses = ['made.up']; }, /expectedPasses/],
-    [(v) => { v.expectedPasses = ['stdio.root', 'stdio.root']; }, /duplicate case/],
+    [(v) => { v.expectedPasses = []; }, /input.expectedPasses: unknown field/],
+    [(v) => { v.unmetExpectations = []; }, /input.unmetExpectations: unknown field/],
     [(v) => { v.observations[4] = v.observations[3]; }, /duplicate runtime/],
     [(v) => { v.observations[1] = v.observations[0]; }, /duplicate skill/],
     [(v) => { runtime(v).env.SECRET = 'not allowed'; }, /unknown field/],
@@ -189,19 +188,21 @@ test('oversized total input is rejected even if individual values fit bounds', (
   assert.throws(() => buildReport(value), /exceeds 262144 bytes/);
 });
 
-test('human summary omits passing rows, exposes unmet expectations and reference scope', () => {
-  const value = input(); value.collection.kind = 'reference';
+test('failure diagnostics preserve value boundaries and escape control characters', () => {
+  const value = input();
+  runtime(value).env.APC_VALUE = 'wrong\nvalue';
+  delete runtime(value).env.APC_EXPANSION;
+  runtime(value).env.APC_LITERAL = 'changed';
   const report = buildReport(value);
-  const human = formatReport(report);
-  assert.match(human, /16 pass, 0 fail, 0 not_verified/);
-  assert.doesNotMatch(human, /stdio.root:/);
-  assert.match(human, /Reference collection verifies the fixture only/);
-  assert.ok(report.notes.some((note) => note.includes('cannot count as client certification')));
-  value.observations = [];
-  assert.match(formatReport(buildReport(value)), /Unmet expected passes: skills.guide/);
+  assert.equal(result(report, 'stdio.env').detail,
+    'APC_VALUE: expected "fixture value with spaces"; observed "wrong\\nvalue".');
+  const expansion = result(report, 'stdio.expansion').detail;
+  assert.match(expansion, /APC_EXPANSION: expected .*; observed missing/);
+  assert.match(expansion, /APC_LITERAL: expected .*; observed "changed"/);
+  assert.ok(!expansion.includes('undefined'));
 });
 
-test('CLI emits JSON or human text and distinct failure and invalid-input exits', async () => {
+test('CLI succeeds for evaluated outcomes and reserves nonzero exit for report errors', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'apc-report-test-'));
   try {
     const filename = path.join(directory, 'observations.json');
@@ -215,7 +216,18 @@ test('CLI emits JSON or human text and distinct failure and invalid-input exits'
     assert.equal(run(filename).stdout.trim(), formatReport(buildReport(value)));
     runtime(value).argv = [];
     await writeFile(filename, JSON.stringify(value));
-    assert.equal(run(filename).status, 1);
+    const failed = run(filename, '--json');
+    assert.equal(failed.status, 0, failed.stderr);
+    assert.ok(JSON.parse(failed.stdout).summary.fail > 0);
+    assert.equal(run(filename).status, 0);
+    value.observations = [];
+    await writeFile(filename, JSON.stringify(value));
+    const missing = run(filename, '--json');
+    assert.equal(missing.status, 0, missing.stderr);
+    assert.equal(JSON.parse(missing.stdout).summary.not_verified, 16);
+    assert.equal(run(filename).status, 0);
+    await writeFile(filename, JSON.stringify({ ...value, observations: 'invalid' }));
+    assert.equal(run(filename, '--json').status, 2);
     await writeFile(filename, '{broken');
     assert.equal(run(filename).status, 2);
     assert.equal(run(filename, '--unknown').status, 2);

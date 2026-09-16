@@ -16933,19 +16933,24 @@ import path from "node:path";
 
 // plugins/core/src/cases.mjs
 var CASES = Object.freeze([
-  ["skills.guide", "Guide skill marker", ["6.1", "7.1"]],
-  ["skills.alpha", "Alpha skill marker", ["6.1", "7.1"]],
-  ["skills.beta", "Beta skill marker", ["6.1", "7.1"]],
+  ["skills.guide", "skills", "Guide skill marker", ["6.1", "7.1"]],
+  ["skills.alpha", "skills", "Alpha skill marker", ["6.1", "7.1"]],
+  ["skills.beta", "skills", "Beta skill marker", ["6.1", "7.1"]],
   ...["default", "relative", "root", "data"].flatMap((server2) => [
-    [`mcp.${server2}.tool`, `${server2} MCP tool evidence`, ["6.1", "7.2.1"]],
-    [`mcp.${server2}.cwd`, `${server2} working directory`, ["7.2.1"]]
+    [`mcp.${server2}.tool`, "mcp", `${server2} MCP tool evidence`, ["6.1", "7.2.1"]],
+    [`mcp.${server2}.cwd`, "mcp", `${server2} working directory`, ["7.2.1"]]
   ]),
-  ["stdio.root", "Plugin root environment", ["9.1"]],
-  ["stdio.data", "Plugin data environment", ["9.1"]],
-  ["stdio.env", "Configured environment", ["9.1"]],
-  ["stdio.args", "Argument preservation and expansion", ["7.2.1", "9.2"]],
-  ["stdio.expansion", "Environment expansion", ["9.2"]]
-].map(([id, label, specSections]) => Object.freeze({ id, label, specSections: Object.freeze(specSections) })));
+  ["stdio.root", "mcp", "Plugin root environment", ["9.1"]],
+  ["stdio.data", "mcp", "Plugin data environment", ["9.1"]],
+  ["stdio.env", "mcp", "Configured environment", ["9.1"]],
+  ["stdio.args", "mcp", "Argument preservation and expansion", ["7.2.1", "9.2"]],
+  ["stdio.expansion", "mcp", "Environment expansion", ["9.2"]]
+].map(([id, category, label, specSections]) => Object.freeze({
+  id,
+  label,
+  category,
+  specSections: Object.freeze(specSections)
+})));
 var CASE_IDS = Object.freeze(CASES.map(({ id }) => id));
 
 // plugins/core/src/report.mjs
@@ -16993,8 +16998,8 @@ function samePath(actual, expected, flavor) {
 function validate2(input) {
   object3(
     input,
-    ["schemaVersion", "runId", "client", "collection", "expectedPasses", "observations"],
-    ["schemaVersion", "runId", "client", "collection", "expectedPasses", "observations"],
+    ["schemaVersion", "runId", "client", "collection", "observations"],
+    ["schemaVersion", "runId", "client", "collection", "observations"],
     "input"
   );
   if (input.schemaVersion !== 1) invalid("input.schemaVersion", "expected 1");
@@ -17005,13 +17010,6 @@ function validate2(input) {
   object3(input.collection, ["kind", "route"], ["kind", "route"], "input.collection");
   member(input.collection.kind, ["client", "reference"], "input.collection.kind");
   string3(input.collection.route, "input.collection.route", 500);
-  array2(input.expectedPasses, CASE_IDS.length, "input.expectedPasses");
-  const expected = /* @__PURE__ */ new Set();
-  for (const [index, id] of input.expectedPasses.entries()) {
-    member(id, CASE_IDS, `input.expectedPasses[${index}]`);
-    if (expected.has(id)) invalid(`input.expectedPasses[${index}]`, `duplicate case: ${id}`);
-    expected.add(id);
-  }
   array2(input.observations, 7, "input.observations");
   const runtime = /* @__PURE__ */ new Map();
   const skills = /* @__PURE__ */ new Map();
@@ -17052,19 +17050,20 @@ function validate2(input) {
     }
   }
   if (Buffer.byteLength(JSON.stringify(input), "utf8") > MAX_INPUT_BYTES) invalid("input", `exceeds ${MAX_INPUT_BYTES} bytes`);
-  return { runtime, skills, expected };
+  return { runtime, skills };
 }
 function buildReport(input) {
-  const { runtime, skills, expected } = validate2(input);
+  const { runtime, skills } = validate2(input);
   const results = new Map(CASES.map(({ id }) => [id, { id, status: "not_verified", detail: "No observation supplied." }]));
   const set = (id, status, detail) => results.set(id, { id, status, detail });
   const check = (id, condition, pass, fail) => set(id, condition ? "pass" : "fail", condition ? pass : fail);
+  const mismatch = (field, expected, observed) => `${field}: expected ${JSON.stringify(expected)}; observed ${observed === void 0 ? "missing" : JSON.stringify(observed)}.`;
   for (const [skill, [id, marker]] of Object.entries(SKILLS)) {
     if (skills.has(skill)) check(
       id,
       skills.get(skill) === marker,
       "Agent reported the expected client-loaded skill marker.",
-      "Reported skill marker does not match."
+      mismatch("Skill marker", marker, skills.get(skill))
     );
   }
   for (const [server2, evidence2] of runtime) {
@@ -17078,7 +17077,7 @@ function buildReport(input) {
         `mcp.${server2}.cwd`,
         samePath(evidence2.cwd, target, flavor),
         "Working directory matches the resolved expected path.",
-        "Working directory does not match the resolved expected path."
+        mismatch("Working directory", target, evidence2.cwd)
       );
     }
   }
@@ -17090,19 +17089,19 @@ function buildReport(input) {
       "stdio.root",
       samePath(env.PLUGIN_ROOT, root2, flavor),
       "PLUGIN_ROOT is absolute and matches the independently computed root.",
-      "PLUGIN_ROOT is missing, not absolute, or does not match the independently computed root."
+      mismatch("PLUGIN_ROOT", root2, env.PLUGIN_ROOT)
     );
     check(
       "stdio.data",
       typeof env.PLUGIN_DATA === "string" && flavor.isAbsolute(env.PLUGIN_DATA),
       "PLUGIN_DATA is an absolute path for the producing operating system.",
-      "PLUGIN_DATA is missing or is not an absolute path for the producing operating system."
+      `PLUGIN_DATA: expected an absolute ${flavor === path.win32 ? "Windows" : "POSIX"} path; observed ${env.PLUGIN_DATA === void 0 ? "missing" : JSON.stringify(env.PLUGIN_DATA)}.`
     );
     check(
       "stdio.env",
       env.APC_VALUE === "fixture value with spaces",
       "Configured environment value is preserved.",
-      "APC_VALUE is missing or does not match the configured value."
+      mismatch("APC_VALUE", "fixture value with spaces", env.APC_VALUE)
     );
     if (env.PLUGIN_DATA === void 0) {
       for (const id of ["stdio.args", "stdio.expansion"]) set(id, "not_verified", "PLUGIN_DATA is missing; expected expansion cannot be computed.");
@@ -17121,21 +17120,29 @@ function buildReport(input) {
         "stdio.args",
         argv.length === expectedArgv.length && argv.every((arg, i) => arg === expectedArgv[i]),
         "Arguments preserve boundaries and apply only the specified expansion.",
-        "Arguments do not match the expected ordered values."
+        mismatch("Arguments", expectedArgv, argv)
       );
+      const expectedExpansion = {
+        APC_EXPANSION: `${root2}|${env.PLUGIN_DATA}|${root2}`,
+        APC_LITERAL: "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}"
+      };
+      const differences = Object.entries(expectedExpansion).filter(([key, expected]) => env[key] !== expected).map(([key, expected]) => mismatch(key, expected, env[key]));
       check(
         "stdio.expansion",
-        env.APC_EXPANSION === `${root2}|${env.PLUGIN_DATA}|${root2}` && env.APC_LITERAL === "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}",
+        differences.length === 0,
         "Environment values apply only the specified expansion.",
-        "APC_EXPANSION or APC_LITERAL is missing or does not match."
+        differences.join(" ")
       );
     }
   }
-  const ordered = CASES.map(({ id, specSections }) => ({ ...results.get(id), specSections: [...specSections] }));
+  const ordered = CASES.map(({ id, label, category, specSections }) => ({
+    ...results.get(id),
+    label,
+    category,
+    specSections: [...specSections]
+  }));
   const summary = { pass: 0, fail: 0, not_verified: 0, total: ordered.length };
   for (const result of ordered) summary[result.status] += 1;
-  const expectedPasses = CASE_IDS.filter((id) => expected.has(id));
-  const unmetExpectations = expectedPasses.filter((id) => results.get(id).status !== "pass");
   return {
     schemaVersion: 1,
     specVersion: "1.0.0",
@@ -17164,8 +17171,6 @@ function buildReport(input) {
     ],
     results: ordered,
     summary,
-    expectedPasses,
-    unmetExpectations,
     notes: [
       "Results describe submitted observations; they do not authenticate their source.",
       "Skill markers are agent assertions about client-loaded skills, not proof of loading.",
@@ -17175,17 +17180,55 @@ function buildReport(input) {
   };
 }
 function formatReport(report) {
-  const safe = (value) => JSON.stringify(value);
-  return [
-    `Agent Plugins conformance: ${safe(report.client.name)} ${safe(report.client.version)}`,
+  const safe = (value) => value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
+    const escaped = JSON.stringify(character).slice(1, -1);
+    return escaped === character ? `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}` : escaped;
+  });
+  const row = (label, pass, fail, unverified2) => [
+    label.padEnd(11),
+    String(pass).padStart(6),
+    String(fail).padStart(6),
+    String(unverified2).padStart(12)
+  ].join("  ");
+  const lines = [
+    `Agent Plugins conformance \u2014 spec ${safe(report.specVersion)}`,
+    `Client: ${safe(report.client.name)}, version ${safe(report.client.version)}`,
+    "",
+    row("Checks", "Passed", "Failed", "Not verified")
+  ];
+  for (const [category, label] of [["skills", "Skills"], ["mcp", "MCP"]]) {
+    const results = report.results.filter((result) => result.category === category);
+    const count = (status) => results.filter((result) => result.status === status).length;
+    lines.push(row(label, count("pass"), count("fail"), count("not_verified")));
+  }
+  const failures = report.results.filter(({ status }) => status === "fail");
+  if (failures.length) {
+    lines.push("", "Failed");
+    for (const { id, label, detail } of failures) {
+      lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
+    }
+  }
+  const unverified = report.results.filter(({ status }) => status === "not_verified");
+  if (unverified.length) {
+    lines.push("", "Not verified");
+    const skills = new Set(report.observations.filter(({ kind }) => kind === "skill").map(({ skill }) => skill));
+    const servers = new Set(report.observations.filter(({ kind }) => kind === "runtime").map(({ server: server2 }) => server2));
+    const missingSkills = Object.keys(SKILLS).filter((skill) => !skills.has(skill));
+    const missingServers = SERVERS.filter((server2) => !servers.has(server2));
+    if (missingSkills.length) lines.push(`  Skills: ${missingSkills.join(", ")} \u2014 no observations.`);
+    if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(", ")} \u2014 no runtime observations.`);
+    for (const { id, label, detail } of unverified) {
+      const grouped = missingSkills.some((skill) => SKILLS[skill][0] === id) || missingServers.some((server2) => id.startsWith(`mcp.${server2}.`) || server2 === "default" && id.startsWith("stdio."));
+      if (!grouped) lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
+    }
+  }
+  lines.push(
+    "",
     `Run: ${safe(report.runId)}`,
-    `Collection: ${report.collection.kind} via ${safe(report.collection.route)}`,
-    `Summary: ${report.summary.pass} pass, ${report.summary.fail} fail, ${report.summary.not_verified} not_verified (${report.summary.total} total)`,
-    ...report.results.filter(({ status }) => status !== "pass").map(({ id, status, detail }) => `${status.padEnd(12)} ${id}: ${detail}`),
-    `Unmet expected passes: ${report.unmetExpectations.length ? report.unmetExpectations.join(", ") : "none"}`,
-    "Scope: submitted runtime evidence and agent-reported skill markers; not full client certification.",
-    ...report.collection.kind === "reference" ? ["Reference collection verifies the fixture only."] : []
-  ].join("\n");
+    `Evidence source: ${safe(report.collection.kind)} run \u2014 ${safe(report.collection.route)}`,
+    report.collection.kind === "reference" ? "Scope: fixture observations only; does not establish client conformance." : "Scope: submitted observations; skill loading is agent-reported. Selected checks only."
+  );
+  return lines.join("\n");
 }
 
 // plugins/core/src/probe.mjs
@@ -17224,7 +17267,7 @@ var observeTool = {
 var reportTool = {
   name: "report",
   description: "Evaluate collected observations and return one deterministic report in JSON and human-readable form. Missing observations become not_verified. Never execute probes to fill missing observations.",
-  inputSchema: { type: "object", properties: { input: { type: "object", description: "Report input: schemaVersion 1, runId, client {name,version}, collection {kind: client or reference,route}, expectedPasses array, observations array of unchanged observe results or client-discovered skill markers." } }, required: ["input"], additionalProperties: false },
+  inputSchema: { type: "object", properties: { input: { type: "object", description: "Report input: schemaVersion 1, runId, client {name,version}, collection {kind: client or reference,route}, observations array of unchanged observe results or client-discovered skill markers." } }, required: ["input"], additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 };
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: serverName === "default" ? [observeTool, reportTool] : [observeTool] }));

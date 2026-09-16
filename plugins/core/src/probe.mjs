@@ -39,7 +39,7 @@ const observeTool = {
 const reportTool = {
   name: 'report',
   description: 'Evaluate collected observations and return one deterministic report in JSON and human-readable form. Missing observations become not_verified. Never execute probes to fill missing observations.',
-  inputSchema: { type: 'object', properties: { input: { type: 'object', description: 'Report input: schemaVersion 1, runId, client {name,version}, collection {kind: client or reference,route}, expectedPasses array, observations array of unchanged observe results or client-discovered skill markers.' } }, required: ['input'], additionalProperties: false },
+  inputSchema: { type: 'object', properties: { input: { type: 'object', description: 'Report input: schemaVersion 1, runId, client {name,version}, collection {kind: client or reference,route}, observations array of unchanged observe results or client-discovered skill markers.' } }, required: ['input'], additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: serverName === 'default' ? [observeTool, reportTool] : [observeTool] }));

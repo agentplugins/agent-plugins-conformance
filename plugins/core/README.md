@@ -48,7 +48,7 @@ Omit observations that you cannot obtain. Describe unavailable skills, missing t
 
 ## Evaluate a run
 
-The report input separates observations from the developer's expectations. Start with this empty-evidence example and replace the run and client details:
+Start with this empty-evidence input and replace the run and client details:
 
 ```json
 {
@@ -56,21 +56,44 @@ The report input separates observations from the developer's expectations. Start
   "runId": "chosen-unique-run-id",
   "client": {"name": "Example client", "version": "unknown"},
   "collection": {"kind": "client", "route": "Loaded the directory through the client's plugin support"},
-  "expectedPasses": [],
   "observations": []
 }
 ```
 
-Add case IDs to `expectedPasses` only when the developer explicitly expects those cases to pass. Expectations never count as observations. With no observations, every case remains `not_verified`, even if its ID appears in `expectedPasses`.
+`collection` records the collector's account of how the evidence was obtained. Use `kind: "client"` for the client's native plugin loading and `kind: "reference"` for synthetic, harness, or manually configured runs. `route` describes that process in free text. This metadata does not independently authenticate the loading route.
+
+`observations[].kind` identifies the evidence shape: `"skill"` is a loaded skill marker reported by the agent; `"runtime"` is process-launch evidence returned by a probe.
 
 Submit the object to the `default` server's `report` tool as `{"input": <report input object>}`. This supports clients without a local shell. Alternatively, save it as `observations.json` and run from the plugin directory:
 
 ```sh
 node src/report-cli.mjs observations.json
-node src/report-cli.mjs observations.json --json
+node src/report-cli.mjs observations.json --json > report.json
 ```
 
-Both routes use the same evaluator. Cases are `pass`, `fail`, or `not_verified`. The CLI exits with status 1 when evidence shows a failure or an expected case has not passed. A run containing only `not_verified` results exits 0 when `expectedPasses` is empty; that exit status does not mean the client conforms.
+Both routes use the same evaluator. Cases are `pass`, `fail`, or `not_verified`. The CLI exits 0 when it produces a report, including reports with failures or no observations, and 2 for invalid input or a reporting error. Consumers decide which results to require.
+
+### Query results
+
+The JSON preserves the input observations and includes a flat `results` array. Each result has an `id`, human-readable `label`, `category`, `status`, `detail`, and `specSections`. The categories are `skills` and `mcp`; `mcp` includes subprocess launch checks. New checks join the appropriate category so category queries include them automatically.
+
+For example, require all MCP checks to pass:
+
+```sh
+jq -e '
+  .results
+  | map(select(.category == "mcp"))
+  | length > 0 and all(.[]; .status == "pass")
+' report.json
+```
+
+The nonempty check prevents a misspelled category from succeeding without evaluating any cases. To exclude a particular check, change the selection to `select(.category == "mcp" and .id != "stdio.data")`. To require only particular checks, select their IDs and verify that each requested ID is present.
+
+List unresolved checks with their categories and descriptions:
+
+```sh
+jq '.results[] | select(.status != "pass") | {category, id, label, status, detail}' report.json
+```
 
 ## Coverage
 

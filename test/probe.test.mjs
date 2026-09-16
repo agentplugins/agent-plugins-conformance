@@ -45,7 +45,7 @@ async function connect(fixture, mode, override = {}) {
   await client.connect(transport);
   return client;
 }
-const input = (observations) => ({ schemaVersion: 1, runId: 'reference-test', client: { name: 'SDK reference harness', version: '1.30.0' }, collection: { kind: 'reference', route: 'SDK launches fixture processes directly; no client discovery tested' }, expectedPasses: [], observations });
+const input = (observations) => ({ schemaVersion: 1, runId: 'reference-test', client: { name: 'SDK reference harness', version: '1.30.0' }, collection: { kind: 'reference', route: 'SDK launches fixture processes directly; no client discovery tested' }, observations });
 
 test('copied plugin runs MCP probes and CLI reporting without node_modules', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);

@@ -22,11 +22,9 @@ Collect evidence for this run, then submit it to the plugin's reporter. The repo
      "runId": "<your run ID>",
      "client": {"name": "<client name>", "version": "<client version or unknown>"},
      "collection": {"kind": "client", "route": "<how the client loaded the plugin>"},
-     "expectedPasses": [],
      "observations": []
    }
    ```
 
-   Set `expectedPasses` only from explicit developer expectations, using case IDs documented in the plugin README. Expectations are separate from evidence; leave the array empty when none were supplied.
 7. Call the `default` server's `report` tool with `{"input": <report input object>}`. If that tool is unavailable and a local shell is available, save the input and run `node src/report-cli.mjs observations.json` from the plugin directory for the human-readable result; run it again with `--json` for the structured report. Preserve both forms. If neither route is available, return the collected report input for later evaluation without assigning outcomes yourself.
-8. Present the evaluated case outcomes and collection limitations. Do not turn `not_verified` into `fail`, invent an `unsupported` result, or describe this run as client certification. The reporter trusts your account of how skills and tools were exposed; disclose any manual collection route.
+8. Present the reporter's human-readable summary and preserve its JSON output. Consumers apply their own acceptance policy to the result categories and case IDs. Do not turn `not_verified` into `fail`, invent an `unsupported` result, or describe this run as client certification. The reporter trusts your account of how skills and tools were exposed; disclose any manual collection route.
