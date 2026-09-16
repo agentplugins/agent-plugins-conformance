@@ -8,7 +8,7 @@ Plugins for collecting evidence about client support for [Agent Plugins](https:/
 | --- | --- |
 | [Core](plugins/core/) | Skill discovery, MCP tool availability, working directories, and selected subprocess environment and placeholder rules |
 
-Install **`plugins/core`** through the client's Agent Plugins support. The repository root is the development project; each directory under `plugins/` is an installable plugin. See the [core plugin instructions](plugins/core/README.md) to collect observations and evaluate a run.
+Install **`plugins/core`** through the client's Agent Plugins support. The repository root is the development project; each directory under `plugins/` is an installable plugin. See the [core plugin instructions](plugins/core/README.md) to run the conformance guide and use its results.
 
 The core plugin requires Node.js 22 or newer as `node` on the client's executable search path. Its committed MCP bundle and CLI reporter run without a build or dependency installation.
 
@@ -25,4 +25,4 @@ pnpm check
 
 The root development package builds and tests the plugins. To evaluate saved core observations from the repository root, run `pnpm report observations.json` (add `--json` for the structured report).
 
-See [verification scope](docs/verification.md) for the automated integration boundaries and native portable-plugin exercise.
+Automated tests exercise the packaged probes and reporter through the official MCP SDK and the CLI. The test harness expands configuration and launches servers itself; these tests do not exercise a client's native plugin loader.

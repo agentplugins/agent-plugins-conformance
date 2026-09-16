@@ -7,72 +7,22 @@ This initial release covers skill discovery, MCP tool availability, working dire
 ## Run through a client
 
 1. Make Node.js 22 or newer available as `node` on the client's executable search path. The committed MCP bundle includes the official MCP SDK; using the plugin requires no dependency installation or build.
-2. Load this directory using the client's Agent Plugins support. The portable manifest and MCP configuration are the root-level `plugin.json` and `mcp.json`.
-3. Ask the agent to run the plugin's `conformance-guide` skill. If the client exposes MCP servers but no skills, give the agent the collection procedure below instead.
+2. Install this directory through the client's Agent Plugins support so its loader discovers the root-level `plugin.json`, `mcp.json`, and plugin components.
+3. Ask the agent to run the plugin's `conformance-guide` skill.
 
-Use the client's plugin installation route so its loader discovers the portable configuration and components.
+The [conformance guide](skills/conformance-guide/SKILL.md) collects skill markers and MCP probe observations, submits them to the deterministic reporter, and returns its human-readable summary and JSON report. It is the canonical procedure for running the checks.
 
-## Collect observations
+If the client exposes the MCP servers but no skills, supply that same guide to the agent as instructions. Supplying a guide does not establish native skill discovery; missing skill observations remain `not_verified`.
 
-Choose one unique `runId` for the run. Record the client name and version (or `unknown` if unavailable).
+## Use the results
 
-### Skills
+Preserve the reporter's human-readable summary and save its JSON report as `report.json` for the queries below. The JSON preserves the input observations and includes a flat `results` array.
 
-Find `conformance-guide`, `conformance-alpha`, and `conformance-beta` through the client's skill mechanism. This can be a skill activation tool or a client-provided catalog followed by the normal reading of its advertised skill resource. Follow each loaded skill's body to collect its marker:
-
-```json
-{"kind":"skill","skill":"conformance-alpha","marker":"<marker from the loaded skill body>"}
-```
-
-Only count a skill that the client exposed and whose body the agent actually loaded. Finding a known skill by searching the filesystem, or receiving its contents directly in a prompt, does not establish client discovery. Obtain each marker from its loaded skill body. The reporter trusts the collecting agent's account of discovery; a matching marker is not independent proof of the loading route.
-
-### MCP servers
-
-Find the `observe` tool on each server: `default`, `relative`, `root`, and `data`. Clients may namespace tool names. Call each available tool with the same input:
-
-```json
-{"runId":"chosen-unique-run-id"}
-```
-
-Each call returns a JSON observation shaped as:
-
-```text
-{kind: "mcp-stdio", server, evidence: {version: 1, runId, server, root, cwd, resolvedData, argv, env}}
-```
-
-Take the observation object from the tool result's `structuredContent` (shown as `structured_content` by some clients), or parse the JSON in its text content. The observation begins with `{"kind":"mcp-stdio","server":...}`. Copy that object unchanged into the report's `observations` array; do not include the MCP result wrapper containing `content` or `structuredContent`.
-
-Preserve every observation field. Do not reconstruct expected paths, repair observed values, or replace the returned evidence with a pass/fail judgment. The probe determines its package root from the bundle's location independently of the client's environment variables. It resolves both the observed working directory (`cwd`) and the supplied data directory for directory-identity comparisons; the original environment value is preserved for expansion checks.
-
-Omit observations that you cannot obtain. Describe unavailable skills, missing tools, or failed calls alongside the report. Missing observations do not establish a failure or an exemption from the specification. Skill discovery passes when all three markers are correct, fails if any supplied marker is wrong, and otherwise remains `not_verified`. Its detail identifies missing and incorrect skills; the individual observations are preserved. Other missing observations become `not_verified`.
-
-## Evaluate a run
-
-Start with this empty-evidence input and replace the run and client details:
-
-```json
-{
-  "schemaVersion": 1,
-  "runId": "chosen-unique-run-id",
-  "client": {"name": "Example client", "version": "unknown"},
-  "observations": []
-}
-```
-
-`observations[].kind` identifies the evidence shape: `"skill"` is a loaded skill marker reported by the agent; `"mcp-stdio"` is process-launch evidence returned by a probe.
-
-Submit the object to the `default` server's `report` tool as `{"input": <report input object>}`. This supports clients without a local shell. Alternatively, save it as `observations.json` and run from the plugin directory:
-
-```sh
-node src/report-cli.mjs observations.json
-node src/report-cli.mjs observations.json --json > report.json
-```
-
-Both routes use the same evaluator. Cases are `pass`, `fail`, or `not_verified`. The CLI exits 0 when it produces a report, including reports with failures or no observations, and 2 for invalid input or a reporting error. Consumers decide which results to require.
+Cases are `pass`, `fail`, or `not_verified`. Missing observations do not by themselves establish failure or exemption from the specification. Skill discovery passes when all three markers are correct, fails if any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of discovery; matching markers are not independent proof of the loading route. Consumers decide which results to require.
 
 ### Query results
 
-The JSON preserves the input observations and includes a flat `results` array. Each result has an `id`, human-readable `label`, `status`, `detail`, and `specSections`. IDs form a hierarchy: `skills.*` covers skills and `mcp.stdio.*` covers stdio MCP behavior. Prefix queries include new checks added within the selected scope.
+Each result has an `id`, human-readable `label`, `status`, `detail`, and `specSections`. IDs form a hierarchy: `skills.*` covers skills and `mcp.stdio.*` covers stdio MCP behavior. Prefix queries include new checks added within the selected scope.
 
 For example, require all stdio MCP checks to pass:
 
@@ -90,6 +40,17 @@ List unresolved checks with their descriptions:
 ```sh
 jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report.json
 ```
+
+### Evaluate saved observations with the CLI
+
+If you have saved the collected report input as `observations.json`, you can evaluate it from the plugin directory:
+
+```sh
+node src/report-cli.mjs observations.json
+node src/report-cli.mjs observations.json --json > report.json
+```
+
+The CLI consumes report input containing the run details and observations, as described in the guide. It uses the same evaluator as the MCP reporter. It exits 0 when it produces a report, including reports with failures or no observations, and 2 for invalid input or a reporting error.
 
 ## Coverage
 
@@ -109,7 +70,3 @@ jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report
 These 14 cases are deliberately narrow. An absolute data path does not prove dedicated storage, writability, or persistence across updates. A configured environment value does not prove replacement of a conflicting inherited value. The fixtures do not establish non-recursive replacement when a replacement value itself contains placeholder text. Invalid configurations, failure isolation, and remote MCP transports are deferred.
 
 The `mcp.stdio.env.*` and `mcp.stdio.args.*` checks evaluate the default-server observation. Other server observations establish only tool availability and their configured working directories.
-
-## Verification
-
-See the repository's [verification scope](https://github.com/agentplugins/agent-plugins-conformance/blob/main/docs/verification.md) for the tested integration boundaries.
