@@ -2,7 +2,6 @@ import path from 'node:path';
 import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
-export const MAX_INPUT_BYTES = 262144;
 const SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const SKILLS = {
   'conformance-guide': 'APC_GUIDE_V1',
@@ -28,10 +27,10 @@ function object(value, keys, required, at) {
   }
 }
 
-function string(value, at, max = 4096, allowEmpty = false) {
+function string(value, at, allowEmpty = false) {
   if (typeof value !== 'string' || (!allowEmpty && value.trim().length === 0) ||
-      value.length > max || value.includes('\0')) {
-    invalid(at, `expected ${allowEmpty ? 'a' : 'a nonempty'} string of at most ${max} characters without NUL`);
+      value.includes('\0')) {
+    invalid(at, `expected ${allowEmpty ? 'a' : 'a nonempty'} string without NUL`);
   }
 }
 
@@ -39,8 +38,8 @@ function member(value, values, at) {
   if (!values.includes(value)) invalid(at, `expected one of: ${values.join(', ')}`);
 }
 
-function array(value, max, at) {
-  if (!Array.isArray(value) || value.length > max) invalid(at, `expected an array of at most ${max} items`);
+function array(value, at) {
+  if (!Array.isArray(value)) invalid(at, 'expected an array');
 }
 
 // Select the producing operating system's path rules, even for reports read elsewhere.
@@ -60,9 +59,9 @@ function validate(input) {
     ['schemaVersion', 'client', 'observations'], 'input');
   if (input.schemaVersion !== 1) invalid('input.schemaVersion', 'expected 1');
   object(input.client, ['name', 'version'], ['name', 'version'], 'input.client');
-  string(input.client.name, 'input.client.name', 200);
-  string(input.client.version, 'input.client.version', 200);
-  array(input.observations, 7, 'input.observations');
+  string(input.client.name, 'input.client.name');
+  string(input.client.version, 'input.client.version');
+  array(input.observations, 'input.observations');
   const runtime = new Map();
   const skills = new Map();
   for (const [index, observation] of input.observations.entries()) {
@@ -87,20 +86,19 @@ function validate(input) {
         string(evidence.resolvedData, `${evidenceAt}.resolvedData`);
         if (!pathFlavor(evidence.resolvedData)) invalid(`${evidenceAt}.resolvedData`, 'expected null or an absolute POSIX or Windows path');
       }
-      array(evidence.argv, 32, `${evidenceAt}.argv`);
-      evidence.argv.forEach((argument, i) => string(argument, `${evidenceAt}.argv[${i}]`, 4096, true));
+      array(evidence.argv, `${evidenceAt}.argv`);
+      evidence.argv.forEach((argument, i) => string(argument, `${evidenceAt}.argv[${i}]`, true));
       object(evidence.env, ENV_KEYS, [], `${evidenceAt}.env`);
-      for (const [key, value] of Object.entries(evidence.env)) string(value, `${evidenceAt}.env.${key}`, 16384, true);
+      for (const [key, value] of Object.entries(evidence.env)) string(value, `${evidenceAt}.env.${key}`, true);
       runtime.set(observation.server, evidence);
     } else {
       object(observation, ['kind', 'skill', 'marker'], ['kind', 'skill', 'marker'], at);
       member(observation.skill, Object.keys(SKILLS), `${at}.skill`);
       if (skills.has(observation.skill)) invalid(at, `duplicate skill observation: ${observation.skill}`);
-      string(observation.marker, `${at}.marker`, 100);
+      string(observation.marker, `${at}.marker`);
       skills.set(observation.skill, observation.marker);
     }
   }
-  if (Buffer.byteLength(JSON.stringify(input), 'utf8') > MAX_INPUT_BYTES) invalid('input', `exceeds ${MAX_INPUT_BYTES} bytes`);
   return { runtime, skills };
 }
 

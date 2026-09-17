@@ -6,11 +6,15 @@ Plugins for collecting evidence about client support for [Agent Plugins](https:/
 
 | Plugin | Coverage |
 | --- | --- |
-| [Core](plugins/core/) | Skill discovery, MCP tool availability, working directories, and selected subprocess environment and placeholder rules |
+| [Agent Plugins Conformance — Core](plugins/agent-plugins-conformance-core/) | Skill discovery, MCP tool availability, working directories, and selected subprocess environment and placeholder rules |
 
-Install **`plugins/core`** through the client's Agent Plugins support. The repository root is the development project; each directory under `plugins/` is an installable plugin. See the [core plugin instructions](plugins/core/README.md) to run the conformance guide and use its results.
+Install **`plugins/agent-plugins-conformance-core`** through the client's Agent Plugins support. Each directory under `plugins/` is an installable plugin; the repository root is the development project.
 
-The core plugin requires Node.js 22 or newer as `node` on the client's executable search path. Its committed MCP bundle and skill-local reporting scripts run without a build or dependency installation. The guide records results directly at a requested absolute JSON output path; users and CI can optionally render a saved report with the [read-only summarizer](plugins/core/README.md#summarize-a-saved-report).
+The core plugin requires Node.js 22 or newer as `node` on the client's executable search path. Its committed MCP bundle and skill-local reporting scripts run without a build or dependency installation. Ask the agent to run its `conformance-guide` skill and save the report to an absolute path:
+
+> Run the conformance-guide skill from Agent Plugins Conformance — Core and save the JSON report to /tmp/agent-plugins-conformance/report.json.
+
+The [core plugin instructions](plugins/agent-plugins-conformance-core/README.md) explain collection, the JSON results, acceptance queries, and an optional summary command for saved reports.
 
 ## Development
 

@@ -5,10 +5,10 @@ import os from 'node:os';
 import { mkdtemp, writeFile, readFile, readdir, cp, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildReport } from '../plugins/core/src/report.mjs';
-import { formatReport, MAX_REPORT_BYTES } from '../plugins/core/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
+import { formatReport } from '../plugins/agent-plugins-conformance-core/src/report-format.mjs';
 
-const plugin = fileURLToPath(new URL('../plugins/core', import.meta.url));
+const plugin = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core', import.meta.url));
 const script = path.join(plugin, 'skills/conformance-guide/scripts/summarize.mjs');
 const report = () => buildReport({ schemaVersion: 1, client: { name: 'Test client', version: '1.0' }, observations: [] });
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
@@ -85,11 +85,9 @@ test('malformed saved reports fail instead of printing misleading partial summar
     assert.equal(output.stdout, '');
     assert.match(output.stderr, /^Summary error: report\./);
   }
-  for (const bytes of ['{broken', ' '.repeat(MAX_REPORT_BYTES + 1)]) {
-    await writeFile(filename, bytes);
-    assert.equal(run(filename).status, 2);
-  }
-  for (const args of [[], ['relative.json'], [filename, '--json'], [directory], [path.join(directory, 'missing')]]) {
+  await writeFile(filename, '{broken');
+  assert.equal(run(filename).status, 2);
+  for (const args of [[], ['relative.json'], [filename, 'extra'], [directory], [path.join(directory, 'missing')]]) {
     const output = run(...args);
     assert.equal(output.status, 2);
     assert.equal(output.stdout, '');

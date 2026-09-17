@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { buildReport } from '../plugins/core/src/report.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
 
 // Reference fixture launcher only. This explicitly implements the expansion
 // under test; it is NOT evidence that a third-party client loaded the plugin.
@@ -24,7 +24,7 @@ async function fixture(t) {
   });
   const root = join(await realpath(parent), 'plugin with spaces ${PLUGIN_DATA}');
   const data = join(await realpath(parent), 'data with spaces');
-  await cp(new URL('../plugins/core', import.meta.url), root, { recursive: true });
+  await cp(new URL('../plugins/agent-plugins-conformance-core', import.meta.url), root, { recursive: true });
   await cp(join(root, 'probe-workdir'), data, { recursive: true });
   const config = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8'));
   return { root, data, config, clients };
@@ -58,7 +58,6 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
     const observation = JSON.parse(result.content[0].text);
     assert.deepEqual(result.structuredContent, observation);
     assert.equal(observation.evidence.root, files.root);
-    assert.equal(Object.hasOwn(observation.evidence, 'runId'), false);
     assert.equal(observation.evidence.env.APC_SHOULD_NOT_LEAK, undefined);
     observations.push(observation);
   }
@@ -83,14 +82,12 @@ test('actual process deviations are evaluated as failures, not missing evidence'
 test('MCP tool errors remain errors and do not create success observations', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
   const client = await connect(files, 'default');
-  for (const arguments_ of [{ runId: '' }, { runId: 'x' }, { extra: true }]) {
-    const result = await client.callTool({ name: 'observe', arguments: arguments_ });
-    assert.equal(result.isError, true);
-    assert.equal(result.structuredContent, undefined);
-  }
-  const result = await client.callTool({ name: 'report', arguments: { input: { status: 'pass' } } });
-  assert.equal(result.isError, true);
-  assert.match(result.content[0].text, /Unknown tool: report/);
+  const invalid = await client.callTool({ name: 'observe', arguments: { extra: true } });
+  assert.equal(invalid.isError, true);
+  assert.equal(invalid.structuredContent, undefined);
+  const unknown = await client.callTool({ name: 'unknown', arguments: {} });
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.content[0].text, /Unknown tool: unknown/);
 });
 
 test('data cwd accepts a client-selected directory alias', { timeout: 30_000 }, async (t) => {

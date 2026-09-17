@@ -1,5 +1,4 @@
 // Saved reports are formatted independently of the current evaluator and case list.
-export const MAX_REPORT_BYTES = 4194304;
 const STATUSES = ['pass', 'fail', 'not_verified'];
 
 function invalid(at, reason) {
@@ -45,7 +44,6 @@ export function validateSavedReport(report) {
     if (report.summary[status] !== count) invalid(`report.summary.${status}`, `expected ${count} from saved results`);
   }
   strings(report.notes, 'report.notes');
-  if (Buffer.byteLength(JSON.stringify(report), 'utf8') > MAX_REPORT_BYTES) invalid('report', `exceeds ${MAX_REPORT_BYTES} bytes`);
   return report;
 }
 

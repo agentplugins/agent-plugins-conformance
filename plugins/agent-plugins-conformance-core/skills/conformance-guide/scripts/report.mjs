@@ -1,20 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { mkdir, open, rename, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
-import { buildReport, MAX_INPUT_BYTES } from '../../../src/report.mjs';
-import { MAX_REPORT_BYTES, validateSavedReport } from '../../../src/report-format.mjs';
-
-async function readBounded(stream, limit, label) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of stream) {
-    size += chunk.length;
-    if (size > limit) throw new Error(`${label} exceeds ${limit} bytes`);
-    chunks.push(chunk);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-}
+import { buildReport } from '../../../src/report.mjs';
+import { validateSavedReport } from '../../../src/report-format.mjs';
 
 function validateMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) {
@@ -29,7 +17,6 @@ function validateMessage(message) {
 
 async function writeReport(outputPath, report) {
   const content = `${JSON.stringify(report, null, 2)}\n`;
-  if (Buffer.byteLength(content) > MAX_REPORT_BYTES) throw new Error(`Report exceeds ${MAX_REPORT_BYTES} bytes`);
   // A sibling temporary file keeps replacement on the destination filesystem.
   const temporary = join(dirname(outputPath), `.conformance-report-${randomUUID()}.tmp`);
   const handle = await open(temporary, 'wx', 0o600);
@@ -50,7 +37,9 @@ try {
   if (!outputPath || !isAbsolute(outputPath) || extra.length) {
     throw new Error('Usage: node report.mjs <absolute-output-path> (one start or record JSON message on stdin)');
   }
-  const message = await readBounded(process.stdin, MAX_INPUT_BYTES, 'Input');
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   validateMessage(message);
   let report;
   if (message.action === 'start') {
@@ -59,7 +48,7 @@ try {
   } else {
     let saved;
     try {
-      saved = await readBounded(createReadStream(outputPath, { end: MAX_REPORT_BYTES }), MAX_REPORT_BYTES, 'Saved report');
+      saved = JSON.parse(await readFile(outputPath, 'utf8'));
     } catch (error) {
       if (error.code === 'ENOENT') throw new Error('Report does not exist; start collection first');
       throw error;

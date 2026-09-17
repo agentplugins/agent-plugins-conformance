@@ -5,10 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { buildReport, MAX_INPUT_BYTES } from '../plugins/core/src/report.mjs';
-import { MAX_REPORT_BYTES } from '../plugins/core/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
 
-const script = fileURLToPath(new URL('../plugins/core/skills/conformance-guide/scripts/report.mjs', import.meta.url));
+const script = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core/skills/conformance-guide/scripts/report.mjs', import.meta.url));
 const client = { name: 'Reference client', version: '1' };
 const start = { action: 'start', client };
 const skill = (name = 'alpha', marker = `APC_${name.toUpperCase()}_V1`) => ({ kind: 'skill', skill: `conformance-${name}`, marker });
@@ -82,7 +81,7 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   assert.deepEqual(await readdir(join(f.directory, 'nested directory')), ['report with spaces.json']);
 });
 
-test('invalid requests and oversized stdin fail without changing an existing report', async (t) => {
+test('invalid requests fail without changing an existing report', async (t) => {
   const f = await fixture(t);
   f.success(start);
   const before = await readFile(f.outputPath, 'utf8');
@@ -92,7 +91,6 @@ test('invalid requests and oversized stdin fail without changing an existing rep
     { action: 'record' }, { action: 'record', observation: skill(), client },
     { action: 'record', observation: { ...skill(), arbitrary: true } },
     { action: 'record', observation: { kind: 'mcp-stdio', server: 'default', evidence: {} } },
-    ' '.repeat(MAX_INPUT_BYTES + 1),
   ];
   for (const request of requests) {
     const result = f.run(request);
@@ -105,7 +103,7 @@ test('invalid requests and oversized stdin fail without changing an existing rep
 
 test('reporter requires exactly one absolute path and a previous start for record', async (t) => {
   const f = await fixture(t);
-  for (const args of [[], ['report.json'], [f.outputPath, '--json'], [f.outputPath, 'extra']]) {
+  for (const args of [[], ['report.json'], [f.outputPath, 'extra']]) {
     const result = f.run(start, args);
     assert.equal(result.status, 2);
     assert.match(result.stderr, /Usage:/);
@@ -124,7 +122,6 @@ test('malformed saved state is rejected even when its bad observation would be r
     '{', 'null', JSON.stringify({ schemaVersion: 1, client, observations: [] }),
     JSON.stringify({ ...expected([]), summary: { pass: 999, fail: 0, not_verified: 0, total: 999 } }),
     JSON.stringify({ ...expected([skill()]), observations: [{ ...skill(), unexpected: true }] }),
-    ' '.repeat(MAX_REPORT_BYTES + 1),
   ];
   for (const content of malformed) {
     await writeFile(f.outputPath, content);
@@ -153,7 +150,7 @@ test('write errors report failure and remove sibling temporary files', async (t)
 test('complete copied plugin reports without runtime dependencies from unrelated cwd', async (t) => {
   const f = await fixture(t);
   const copiedPlugin = join(f.directory, 'copied plugin');
-  await cp(new URL('../plugins/core', import.meta.url), copiedPlugin, { recursive: true });
+  await cp(new URL('../plugins/agent-plugins-conformance-core', import.meta.url), copiedPlugin, { recursive: true });
   assert.equal((await readdir(copiedPlugin)).includes('node_modules'), false);
   const copiedScript = join(copiedPlugin, 'skills/conformance-guide/scripts/report.mjs');
   f.success(start, copiedScript);

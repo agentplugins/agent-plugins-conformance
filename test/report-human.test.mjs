@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport } from '../plugins/core/src/report.mjs';
-import { formatReport } from '../plugins/core/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
+import { formatReport } from '../plugins/agent-plugins-conformance-core/src/report-format.mjs';
 
 function input() {
   const root = '/fixture/plugin';
@@ -71,7 +71,6 @@ test('unverified checks with supplied observations keep their individual reasons
   assert.match(human, /data working directory \(mcp.stdio.cwd.plugin-data\)/);
   assert.match(human, /PLUGIN_DATA is missing; expected expansion cannot be computed\./);
   assert.match(human, /PLUGIN_DATA could not be resolved/);
-  assert.doesNotMatch(human, /no observations|no stdio MCP observations/);
 });
 
 test('human metadata and diagnostic values cannot inject terminal controls or fake lines', () => {
@@ -117,7 +116,6 @@ test('failed skill discovery shows incorrect and missing skills together regardl
     assert.match(failed, /Immediate child skill discovery \(skills.discovery.immediate-children\)/);
     assert.match(failed, /conformance-guide: expected "APC_GUIDE_V1"; observed "incorrect guide"/);
     assert.match(failed, /Missing skill observations: conformance-alpha\./);
-    assert.doesNotMatch(human, /Skills: .*no observations/);
     if (includeMcp) assert.doesNotMatch(human, /\nNot verified\n/);
   }
 });

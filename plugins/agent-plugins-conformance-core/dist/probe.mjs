@@ -7199,7 +7199,7 @@ var require_dist = __commonJS({
   }
 });
 
-// plugins/core/src/probe.mjs
+// plugins/agent-plugins-conformance-core/src/probe.mjs
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { isAbsolute } from "node:path";
@@ -16928,7 +16928,7 @@ var StdioServerTransport = class {
   }
 };
 
-// plugins/core/src/probe.mjs
+// plugins/agent-plugins-conformance-core/src/probe.mjs
 var serverName = process.argv[2];
 if (!["default", "relative", "root", "data"].includes(serverName)) {
   throw new Error("Expected probe mode: default, relative, root, or data");

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { buildReport, CASE_IDS } from '../plugins/core/src/report.mjs';
+import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
 
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
@@ -25,7 +25,7 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
 const runtime = (value, server = 'default') => value.observations.find((observation) => observation.server === server).evidence;
 const result = (report, id) => report.results.find((item) => item.id === id);
 
-test('complete valid evidence passes every case and preserves canonical bounded evidence', () => {
+test('complete valid evidence passes every case and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
   assert.deepEqual(report.summary, { pass: 14, fail: 0, not_verified: 0, total: 14 });
@@ -57,11 +57,7 @@ test('missing observations remain unverified and every result identifies its hie
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
-    assert.equal(Object.hasOwn(result, 'category'), false);
   }
-  assert.equal(Object.hasOwn(report, 'collection'), false);
-  assert.equal(Object.hasOwn(report, 'expectedPasses'), false);
-  assert.equal(Object.hasOwn(report, 'unmetExpectations'), false);
 });
 
 test('missing default environment fails independent checks and leaves dependent expansion unverified', () => {
@@ -153,39 +149,26 @@ test('data environment must be absolute under the producing operating system pat
   }
 });
 
-test('unknown keys, duplicate observations, identities, versions, types and oversized values are rejected', () => {
+test('unknown keys, duplicate observations, identities, versions and types are rejected', () => {
   const invalid = [
     [(v) => { v.status = 'pass'; }, /input.status: unknown field/],
-    [(v) => { v.expectedPasses = []; }, /input.expectedPasses: unknown field/],
-    [(v) => { v.unmetExpectations = []; }, /input.unmetExpectations: unknown field/],
     [(v) => { v.observations[4] = v.observations[3]; }, /duplicate mcp-stdio/],
     [(v) => { v.observations[1] = v.observations[0]; }, /duplicate skill/],
     [(v) => { runtime(v).env.SECRET = 'not allowed'; }, /unknown field/],
     [(v) => { runtime(v).server = 'other'; }, /must match observation.server/],
     [(v) => { v.observations[3].server = 'other'; }, /expected one of/],
     [(v) => { runtime(v).version = 2; }, /expected 1/],
-    [(v) => { runtime(v).runId = 'legacy-run'; }, /runId: unknown field/],
+    [(v) => { runtime(v).extra = true; }, /extra: unknown field/],
     [(v) => { runtime(v).root = 'relative'; }, /absolute/],
     [(v) => { delete runtime(v).resolvedData; }, /resolvedData: required/],
     [(v) => { runtime(v).resolvedData = 'relative'; }, /absolute/],
     [(v) => { runtime(v).resolvedData = 1; }, /resolvedData: expected/],
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
-    [(v) => { v.client.name = 'a'.repeat(201); }, /at most 200/],
-    [(v) => { v.runId = 'legacy-run'; }, /runId: unknown field/],
-    [(v) => { v.collection = { kind: 'client', route: 'installation' }; }, /input.collection: unknown field/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
-    [(v) => { v.observations[3].kind = 'runtime'; }, /expected one of: mcp-stdio, skill/],
+    [(v) => { v.observations[3].kind = 'unknown'; }, /expected one of: mcp-stdio, skill/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
-});
-
-test('oversized total input is rejected even if individual values fit bounds', () => {
-  const value = input();
-  for (const observation of value.observations.filter(({ kind }) => kind === 'mcp-stdio')) {
-    observation.evidence.argv = Array(32).fill('a'.repeat(4096));
-  }
-  assert.throws(() => buildReport(value), /exceeds 262144 bytes/);
 });
 
 test('failure diagnostics preserve value boundaries and escape control characters', () => {

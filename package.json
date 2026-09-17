@@ -10,7 +10,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test",
-    "summarize": "node plugins/core/skills/conformance-guide/scripts/summarize.mjs",
+    "summarize": "node plugins/agent-plugins-conformance-core/skills/conformance-guide/scripts/summarize.mjs",
     "check": "node scripts/check.mjs"
   },
   "devDependencies": {
