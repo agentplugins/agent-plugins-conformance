@@ -1871,8 +1871,8 @@ var require_keyword = __commonJS({
       var _a3;
       const { gen, keyword, schema, parentSchema, $data, it } = cxt;
       checkAsyncKeyword(it, def);
-      const validate3 = !$data && def.compile ? def.compile.call(it.self, schema, parentSchema, it) : def.validate;
-      const validateRef = useKeyword(gen, keyword, validate3);
+      const validate2 = !$data && def.compile ? def.compile.call(it.self, schema, parentSchema, it) : def.validate;
+      const validateRef = useKeyword(gen, keyword, validate2);
       const valid = gen.let("valid");
       cxt.block$data(valid, validateKeyword);
       cxt.ok((_a3 = def.valid) !== null && _a3 !== void 0 ? _a3 : valid);
@@ -2945,28 +2945,28 @@ var require_compile = __commonJS({
         if (this.opts.code.process)
           sourceCode = this.opts.code.process(sourceCode, sch);
         const makeValidate = new Function(`${names_1.default.self}`, `${names_1.default.scope}`, sourceCode);
-        const validate3 = makeValidate(this, this.scope.get());
-        this.scope.value(validateName, { ref: validate3 });
-        validate3.errors = null;
-        validate3.schema = sch.schema;
-        validate3.schemaEnv = sch;
+        const validate2 = makeValidate(this, this.scope.get());
+        this.scope.value(validateName, { ref: validate2 });
+        validate2.errors = null;
+        validate2.schema = sch.schema;
+        validate2.schemaEnv = sch;
         if (sch.$async)
-          validate3.$async = true;
+          validate2.$async = true;
         if (this.opts.code.source === true) {
-          validate3.source = { validateName, validateCode, scopeValues: gen._values };
+          validate2.source = { validateName, validateCode, scopeValues: gen._values };
         }
         if (this.opts.unevaluated) {
           const { props, items } = schemaCxt;
-          validate3.evaluated = {
+          validate2.evaluated = {
             props: props instanceof codegen_1.Name ? void 0 : props,
             items: items instanceof codegen_1.Name ? void 0 : items,
             dynamicProps: props instanceof codegen_1.Name,
             dynamicItems: items instanceof codegen_1.Name
           };
-          if (validate3.source)
-            validate3.source.evaluated = (0, codegen_1.stringify)(validate3.evaluated);
+          if (validate2.source)
+            validate2.source.evaluated = (0, codegen_1.stringify)(validate2.evaluated);
         }
-        sch.validate = validate3;
+        sch.validate = validate2;
         return sch;
       } catch (e) {
         delete sch.validate;
@@ -3263,8 +3263,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path2) {
-      let input = path2;
+    function removeDotSegments(path) {
+      let input = path;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3673,8 +3673,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path2 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path2 && path2 !== "/" ? path2 : void 0;
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path && path !== "/" ? path : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -5054,8 +5054,8 @@ var require_multipleOf = __commonJS({
         const { gen, data, schemaCode, it } = cxt;
         const prec = it.opts.multipleOfPrecision;
         const res = gen.let("res");
-        const invalid2 = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
-        cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid2}))`);
+        const invalid = prec ? (0, codegen_1._)`Math.abs(Math.round(${res}) - ${res}) > 1e-${prec}` : (0, codegen_1._)`${res} !== parseInt(${res})`;
+        cxt.fail$data((0, codegen_1._)`(${schemaCode} === 0 || (${res} = ${data}/${schemaCode}, ${invalid}))`);
       }
     };
     exports.default = def;
@@ -6888,8 +6888,8 @@ var require_formats = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.formatNames = exports.fastFormats = exports.fullFormats = void 0;
-    function fmtDef(validate3, compare) {
-      return { validate: validate3, compare };
+    function fmtDef(validate2, compare) {
+      return { validate: validate2, compare };
     }
     exports.fullFormats = {
       // date: http://tools.ietf.org/html/rfc3339#section-5.6
@@ -7304,8 +7304,8 @@ function getEnumValues(entries) {
   const values = Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
   return values;
 }
-function joinValues(array3, separator = "|") {
-  return array3.map((val) => stringifyPrimitive(val)).join(separator);
+function joinValues(array2, separator = "|") {
+  return array2.map((val) => stringifyPrimitive(val)).join(separator);
 }
 function jsonStringifyReplacer(_, value) {
   if (typeof value === "bigint")
@@ -7346,9 +7346,9 @@ function floatSafeRemainder(val, step) {
   return ratio - roundedRatio;
 }
 var EVALUATING = /* @__PURE__ */ Symbol("evaluating");
-function defineLazy(object4, key, getter) {
+function defineLazy(object3, key, getter) {
   let value = void 0;
-  Object.defineProperty(object4, key, {
+  Object.defineProperty(object3, key, {
     get() {
       if (value === EVALUATING) {
         return void 0;
@@ -7360,7 +7360,7 @@ function defineLazy(object4, key, getter) {
       return value;
     },
     set(v) {
-      Object.defineProperty(object4, key, {
+      Object.defineProperty(object3, key, {
         value: v
         // configurable: true,
       });
@@ -7440,10 +7440,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path2) {
-  if (!path2)
+function getElementAtPath(obj, path) {
+  if (!path)
     return obj;
-  return path2.reduce((acc, key) => acc?.[key], obj);
+  return path.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -7783,11 +7783,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path2, issues) {
+function prefixIssues(path, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path2);
+    iss.path.unshift(path);
     return iss;
   });
 }
@@ -8233,16 +8233,16 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
 }
 function formatError(error2, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error3, path2 = []) => {
+  const processError = (error3, path = []) => {
     for (const issue2 of error3.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path2, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path2, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else {
-        const fullpath = [...path2, ...issue2.path];
+        const fullpath = [...path, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -11683,11 +11683,11 @@ function compactTypeUnion(schema) {
     if (keys.length !== 1 || keys[0] !== "type")
       return;
     const type = option.type;
-    for (const member2 of Array.isArray(type) ? type : [type]) {
-      if (typeof member2 !== "string")
+    for (const member of Array.isArray(type) ? type : [type]) {
+      if (typeof member !== "string")
         return;
-      if (!types.includes(member2))
-        types.push(member2);
+      if (!types.includes(member))
+        types.push(member);
     }
   }
   delete schema.anyOf;
@@ -11695,27 +11695,27 @@ function compactTypeUnion(schema) {
 }
 var FOLDABLE_KEYS = /* @__PURE__ */ new Set(["type", "properties", "required", "additionalProperties"]);
 var UNION_KEYS = ["oneOf", "anyOf"];
-function undeclaredConstraint(member2) {
-  const extra = member2.additionalProperties;
+function undeclaredConstraint(member) {
+  const extra = member.additionalProperties;
   if (extra === void 0 || extra === false || typeof extra !== "object" || extra === null)
     return null;
   return Object.keys(extra).length ? extra : null;
 }
 function foldObjects(members2) {
   const objects = [];
-  for (const member2 of members2) {
-    if (typeof member2 !== "object" || member2.type !== "object")
+  for (const member of members2) {
+    if (typeof member !== "object" || member.type !== "object")
       return null;
-    for (const key in member2) {
+    for (const key in member) {
       if (!FOLDABLE_KEYS.has(key))
         return null;
     }
-    objects.push(member2);
+    objects.push(member);
   }
   const properties = {};
   const required2 = /* @__PURE__ */ new Set();
-  for (const object4 of objects) {
-    for (const key in object4.properties) {
+  for (const object3 of objects) {
+    for (const key in object3.properties) {
       if (Object.prototype.hasOwnProperty.call(properties, key))
         continue;
       const parts = [];
@@ -11729,18 +11729,18 @@ function foldObjects(members2) {
       const merged = parts.length === 1 ? parts[0] : foldObjects(parts) ?? { allOf: parts };
       assignProp(properties, key, merged);
     }
-    for (const key of object4.required ?? [])
+    for (const key of object3.required ?? [])
       required2.add(key);
   }
   const folded = { type: "object", properties };
   if (required2.size)
     folded.required = [...required2];
-  if (objects.every((object4) => object4.additionalProperties === false)) {
+  if (objects.every((object3) => object3.additionalProperties === false)) {
     folded.additionalProperties = false;
   } else {
     const constraints = [];
-    for (const object4 of objects) {
-      const constraint = undeclaredConstraint(object4);
+    for (const object3 of objects) {
+      const constraint = undeclaredConstraint(object3);
       if (constraint && !constraints.some((seen) => JSON.stringify(seen) === JSON.stringify(constraint)))
         constraints.push(constraint);
     }
@@ -16928,299 +16928,6 @@ var StdioServerTransport = class {
   }
 };
 
-// plugins/core/src/report.mjs
-import path from "node:path";
-
-// plugins/core/src/cases.mjs
-var MCP_CWD_VARIANTS = Object.freeze({
-  default: "omitted",
-  relative: "plugin-relative",
-  root: "plugin-root",
-  data: "plugin-data"
-});
-var CASES = Object.freeze([
-  ["skills.discovery.immediate-children", "Immediate child skill discovery", ["6.1", "7.1"]],
-  ...Object.entries(MCP_CWD_VARIANTS).flatMap(([server2, variant]) => [
-    [`mcp.stdio.tool-availability.cwd-${variant}`, `${server2} MCP tool evidence`, ["6.1", "7.2.1"]],
-    [`mcp.stdio.cwd.${variant}`, `${server2} working directory`, ["7.2.1"]]
-  ]),
-  ["mcp.stdio.env.plugin-root", "Plugin root environment", ["9.1"]],
-  ["mcp.stdio.env.plugin-data-absolute", "Plugin data environment", ["9.1"]],
-  ["mcp.stdio.env.configured-value", "Configured environment", ["9.1"]],
-  ["mcp.stdio.args.preservation-and-expansion", "Argument preservation and expansion", ["7.2.1", "9.2"]],
-  ["mcp.stdio.env.expansion", "Environment expansion", ["9.2"]]
-].map(([id, label, specSections]) => Object.freeze({
-  id,
-  label,
-  specSections: Object.freeze(specSections)
-})));
-var CASE_IDS = Object.freeze(CASES.map(({ id }) => id));
-
-// plugins/core/src/report.mjs
-var MAX_INPUT_BYTES = 262144;
-var SERVERS = Object.keys(MCP_CWD_VARIANTS);
-var SKILLS = {
-  "conformance-guide": "APC_GUIDE_V1",
-  "conformance-alpha": "APC_ALPHA_V1",
-  "conformance-beta": "APC_BETA_V1"
-};
-var ENV_KEYS = ["PLUGIN_ROOT", "PLUGIN_DATA", "APC_VALUE", "APC_EXPANSION", "APC_LITERAL"];
-function invalid(at, reason) {
-  throw new TypeError(`${at}: ${reason}`);
-}
-function object3(value, keys, required2, at) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
-    invalid(at, "expected an object");
-  }
-  for (const key of Object.keys(value)) {
-    if (!keys.includes(key)) invalid(`${at}.${key}`, "unknown field");
-  }
-  for (const key of required2) {
-    if (!Object.hasOwn(value, key)) invalid(`${at}.${key}`, "required field is missing");
-  }
-}
-function string3(value, at, max = 4096, allowEmpty = false) {
-  if (typeof value !== "string" || !allowEmpty && value.trim().length === 0 || value.length > max || value.includes("\0")) {
-    invalid(at, `expected ${allowEmpty ? "a" : "a nonempty"} string of at most ${max} characters without NUL`);
-  }
-}
-function member(value, values, at) {
-  if (!values.includes(value)) invalid(at, `expected one of: ${values.join(", ")}`);
-}
-function array2(value, max, at) {
-  if (!Array.isArray(value) || value.length > max) invalid(at, `expected an array of at most ${max} items`);
-}
-function pathFlavor(value) {
-  if (typeof value !== "string") return null;
-  if (/^[A-Za-z]:[\\/]/.test(value) || /^\\\\[^\\]+\\[^\\]+/.test(value)) return path.win32;
-  return value.startsWith("/") ? path.posix : null;
-}
-function samePath(actual, expected, flavor) {
-  return pathFlavor(actual) === flavor && pathFlavor(expected) === flavor && flavor.resolve(actual) === flavor.resolve(expected);
-}
-function validate2(input) {
-  object3(
-    input,
-    ["schemaVersion", "runId", "client", "observations"],
-    ["schemaVersion", "runId", "client", "observations"],
-    "input"
-  );
-  if (input.schemaVersion !== 1) invalid("input.schemaVersion", "expected 1");
-  string3(input.runId, "input.runId", 100);
-  object3(input.client, ["name", "version"], ["name", "version"], "input.client");
-  string3(input.client.name, "input.client.name", 200);
-  string3(input.client.version, "input.client.version", 200);
-  array2(input.observations, 7, "input.observations");
-  const runtime = /* @__PURE__ */ new Map();
-  const skills = /* @__PURE__ */ new Map();
-  for (const [index, observation] of input.observations.entries()) {
-    const at = `input.observations[${index}]`;
-    object3(observation, ["kind", "server", "evidence", "skill", "marker"], ["kind"], at);
-    member(observation.kind, ["mcp-stdio", "skill"], `${at}.kind`);
-    if (observation.kind === "mcp-stdio") {
-      object3(observation, ["kind", "server", "evidence"], ["kind", "server", "evidence"], at);
-      member(observation.server, SERVERS, `${at}.server`);
-      if (runtime.has(observation.server)) invalid(at, `duplicate mcp-stdio observation: ${observation.server}`);
-      const evidenceAt = `${at}.evidence`;
-      const evidence = observation.evidence;
-      const keys = ["version", "runId", "server", "root", "cwd", "resolvedData", "argv", "env"];
-      object3(evidence, keys, keys, evidenceAt);
-      if (evidence.version !== 1) invalid(`${evidenceAt}.version`, "expected 1");
-      if (evidence.runId !== input.runId) invalid(`${evidenceAt}.runId`, "must match input.runId");
-      if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, "must match observation.server");
-      for (const field of ["root", "cwd"]) {
-        string3(evidence[field], `${evidenceAt}.${field}`);
-        if (!pathFlavor(evidence[field])) invalid(`${evidenceAt}.${field}`, "expected an absolute POSIX or Windows path");
-      }
-      if (evidence.resolvedData !== null) {
-        string3(evidence.resolvedData, `${evidenceAt}.resolvedData`);
-        if (!pathFlavor(evidence.resolvedData)) invalid(`${evidenceAt}.resolvedData`, "expected null or an absolute POSIX or Windows path");
-      }
-      array2(evidence.argv, 32, `${evidenceAt}.argv`);
-      evidence.argv.forEach((argument, i) => string3(argument, `${evidenceAt}.argv[${i}]`, 4096, true));
-      object3(evidence.env, ENV_KEYS, [], `${evidenceAt}.env`);
-      for (const [key, value] of Object.entries(evidence.env)) string3(value, `${evidenceAt}.env.${key}`, 16384, true);
-      runtime.set(observation.server, evidence);
-    } else {
-      object3(observation, ["kind", "skill", "marker"], ["kind", "skill", "marker"], at);
-      member(observation.skill, Object.keys(SKILLS), `${at}.skill`);
-      if (skills.has(observation.skill)) invalid(at, `duplicate skill observation: ${observation.skill}`);
-      string3(observation.marker, `${at}.marker`, 100);
-      skills.set(observation.skill, observation.marker);
-    }
-  }
-  if (Buffer.byteLength(JSON.stringify(input), "utf8") > MAX_INPUT_BYTES) invalid("input", `exceeds ${MAX_INPUT_BYTES} bytes`);
-  return { runtime, skills };
-}
-function buildReport(input) {
-  const { runtime, skills } = validate2(input);
-  const results = new Map(CASES.map(({ id }) => [id, { id, status: "not_verified", detail: "No observation supplied." }]));
-  const set = (id, status, detail) => results.set(id, { id, status, detail });
-  const check = (id, condition, pass, fail) => set(id, condition ? "pass" : "fail", condition ? pass : fail);
-  const mismatch = (field, expected, observed) => `${field}: expected ${JSON.stringify(expected)}; observed ${observed === void 0 ? "missing" : JSON.stringify(observed)}.`;
-  const missingSkills = Object.keys(SKILLS).filter((skill) => !skills.has(skill));
-  const wrongSkills = Object.entries(SKILLS).filter(([skill, marker]) => skills.has(skill) && skills.get(skill) !== marker).map(([skill, marker]) => mismatch(`Skill marker for ${skill}`, marker, skills.get(skill)));
-  const skillDetails = [...wrongSkills];
-  if (missingSkills.length) skillDetails.push(`Missing skill observations: ${missingSkills.join(", ")}.`);
-  set(
-    "skills.discovery.immediate-children",
-    wrongSkills.length ? "fail" : missingSkills.length ? "not_verified" : "pass",
-    skillDetails.length ? skillDetails.join(" ") : "Agent reported the expected client-loaded markers for all three immediate child skills."
-  );
-  for (const [server2, evidence2] of runtime) {
-    set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server2]}`, "pass", "Valid runtime evidence supplied for this server and run.");
-    const flavor = pathFlavor(evidence2.root);
-    const target = server2 === "default" ? evidence2.root : server2 === "data" ? evidence2.resolvedData : flavor.join(evidence2.root, "probe-workdir");
-    if (target === null) {
-      set(`mcp.stdio.cwd.${MCP_CWD_VARIANTS[server2]}`, "not_verified", "PLUGIN_DATA could not be resolved; the expected working directory is unavailable.");
-    } else {
-      check(
-        `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server2]}`,
-        samePath(evidence2.cwd, target, flavor),
-        "Working directory matches the resolved expected path.",
-        mismatch("Working directory", target, evidence2.cwd)
-      );
-    }
-  }
-  const evidence = runtime.get("default");
-  if (evidence) {
-    const { root: root2, env, argv } = evidence;
-    const flavor = pathFlavor(root2);
-    check(
-      "mcp.stdio.env.plugin-root",
-      samePath(env.PLUGIN_ROOT, root2, flavor),
-      "PLUGIN_ROOT is absolute and matches the independently computed root.",
-      mismatch("PLUGIN_ROOT", root2, env.PLUGIN_ROOT)
-    );
-    check(
-      "mcp.stdio.env.plugin-data-absolute",
-      typeof env.PLUGIN_DATA === "string" && flavor.isAbsolute(env.PLUGIN_DATA),
-      "PLUGIN_DATA is an absolute path for the producing operating system.",
-      `PLUGIN_DATA: expected an absolute ${flavor === path.win32 ? "Windows" : "POSIX"} path; observed ${env.PLUGIN_DATA === void 0 ? "missing" : JSON.stringify(env.PLUGIN_DATA)}.`
-    );
-    check(
-      "mcp.stdio.env.configured-value",
-      env.APC_VALUE === "fixture value with spaces",
-      "Configured environment value is preserved.",
-      mismatch("APC_VALUE", "fixture value with spaces", env.APC_VALUE)
-    );
-    if (env.PLUGIN_DATA === void 0) {
-      for (const id of ["mcp.stdio.args.preservation-and-expansion", "mcp.stdio.env.expansion"]) set(id, "not_verified", "PLUGIN_DATA is missing; expected expansion cannot be computed.");
-    } else {
-      const expectedArgv = [
-        "default",
-        "arg with spaces",
-        "",
-        root2,
-        env.PLUGIN_DATA,
-        "${APC_UNKNOWN}",
-        "$APC_VALUE",
-        "${PLUGIN_ROOT_SUFFIX}"
-      ];
-      check(
-        "mcp.stdio.args.preservation-and-expansion",
-        argv.length === expectedArgv.length && argv.every((arg, i) => arg === expectedArgv[i]),
-        "Arguments preserve boundaries and apply only the specified expansion.",
-        mismatch("Arguments", expectedArgv, argv)
-      );
-      const expectedExpansion = {
-        APC_EXPANSION: `${root2}|${env.PLUGIN_DATA}|${root2}`,
-        APC_LITERAL: "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}"
-      };
-      const differences = Object.entries(expectedExpansion).filter(([key, expected]) => env[key] !== expected).map(([key, expected]) => mismatch(key, expected, env[key]));
-      check(
-        "mcp.stdio.env.expansion",
-        differences.length === 0,
-        "Environment values apply only the specified expansion.",
-        differences.join(" ")
-      );
-    }
-  }
-  const ordered = CASES.map(({ id, label, specSections }) => ({
-    ...results.get(id),
-    label,
-    specSections: [...specSections]
-  }));
-  const summary = { pass: 0, fail: 0, not_verified: 0, total: ordered.length };
-  for (const result of ordered) summary[result.status] += 1;
-  return {
-    schemaVersion: 1,
-    specVersion: "1.0.0",
-    runId: input.runId,
-    client: { name: input.client.name, version: input.client.version },
-    observations: [
-      ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
-        kind: "skill",
-        skill,
-        marker: skills.get(skill)
-      })),
-      ...SERVERS.filter((server2) => runtime.has(server2)).map((server2) => {
-        const evidence2 = runtime.get(server2);
-        return { kind: "mcp-stdio", server: server2, evidence: {
-          version: evidence2.version,
-          runId: evidence2.runId,
-          server: evidence2.server,
-          root: evidence2.root,
-          cwd: evidence2.cwd,
-          resolvedData: evidence2.resolvedData,
-          argv: [...evidence2.argv],
-          env: Object.fromEntries(ENV_KEYS.filter((key) => Object.hasOwn(evidence2.env, key)).map((key) => [key, evidence2.env[key]]))
-        } };
-      })
-    ],
-    results: ordered,
-    summary,
-    notes: [
-      "Results describe submitted observations; they do not authenticate their source.",
-      "Skill markers are agent assertions about client-loaded skills, not proof of loading.",
-      "Working directories use normalized absolute paths under the producing operating system path rules and the data path resolved by the probe; the reporter performs no filesystem lookup."
-    ]
-  };
-}
-function formatReport(report) {
-  const safe = (value) => value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
-    const escaped = JSON.stringify(character).slice(1, -1);
-    return escaped === character ? `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}` : escaped;
-  });
-  const row = (label, pass, fail, unverified2) => [
-    label.padEnd(11),
-    String(pass).padStart(6),
-    String(fail).padStart(6),
-    String(unverified2).padStart(12)
-  ].join("  ");
-  const lines = [
-    `Agent Plugins conformance \u2014 spec ${safe(report.specVersion)}`,
-    `Client: ${safe(report.client.name)}, version ${safe(report.client.version)}`,
-    `Run: ${safe(report.runId)}`,
-    "",
-    row("Checks", "Passed", "Failed", "Not verified")
-  ];
-  for (const [prefix, label] of [["skills.", "Skills"], ["mcp.", "MCP"]]) {
-    const results = report.results.filter((result) => result.id.startsWith(prefix));
-    const count = (status) => results.filter((result) => result.status === status).length;
-    lines.push(row(label, count("pass"), count("fail"), count("not_verified")));
-  }
-  const failures = report.results.filter(({ status }) => status === "fail");
-  if (failures.length) {
-    lines.push("", "Failed");
-    for (const { id, label, detail } of failures) {
-      lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
-    }
-  }
-  const unverified = report.results.filter(({ status }) => status === "not_verified");
-  if (unverified.length) {
-    lines.push("", "Not verified");
-    const servers = new Set(report.observations.filter(({ kind }) => kind === "mcp-stdio").map(({ server: server2 }) => server2));
-    const missingServers = SERVERS.filter((server2) => !servers.has(server2));
-    if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(", ")} \u2014 no stdio MCP observations.`);
-    for (const { id, label, detail } of unverified) {
-      const grouped = missingServers.some((server2) => id === `mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server2]}` || id === `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server2]}` || server2 === "default" && (id.startsWith("mcp.stdio.env.") || id.startsWith("mcp.stdio.args.")));
-      if (!grouped) lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
-    }
-  }
-  return lines.join("\n");
-}
-
 // plugins/core/src/probe.mjs
 var serverName = process.argv[2];
 if (!["default", "relative", "root", "data"].includes(serverName)) {
@@ -17250,31 +16957,20 @@ var server = new Server(
 );
 var observeTool = {
   name: "observe",
-  description: "Return this process launch evidence. Carry the observation object from structuredContent (or parsed JSON text) unchanged to report; exclude the MCP result wrapper. Reads only fixture variables.",
-  inputSchema: { type: "object", properties: { runId: { type: "string", minLength: 1, maxLength: 100 } }, required: ["runId"], additionalProperties: false },
+  description: "Return this process launch evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper. Reads only fixture variables.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 };
-var reportTool = {
-  name: "report",
-  description: "Evaluate collected observations and return one deterministic report in JSON and human-readable form. Never execute probes to fill missing observations.",
-  inputSchema: { type: "object", properties: { input: { type: "object", description: "Report input: schemaVersion 1, runId, client {name,version}, observations array of unchanged observe results or client-discovered skill markers." } }, required: ["input"], additionalProperties: false },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-};
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: serverName === "default" ? [observeTool, reportTool] : [observeTool] }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [observeTool] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
     const args = params.arguments;
     if (params.name === "observe") {
-      if (!args || Object.keys(args).length !== 1 || typeof args.runId !== "string" || !args.runId.trim() || args.runId.length > 100) {
-        throw new Error("observe requires only a nonempty runId string of at most 100 characters");
+      if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
+        throw new Error("observe requires an empty object");
       }
-      const observation = { kind: "mcp-stdio", server: serverName, evidence: { version: 1, runId: args.runId, ...launch } };
+      const observation = { kind: "mcp-stdio", server: serverName, evidence: { version: 1, ...launch } };
       return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
-    }
-    if (params.name === "report" && serverName === "default") {
-      if (!args || Object.keys(args).length !== 1 || !Object.hasOwn(args, "input")) throw new Error("report requires only an input object");
-      const report = buildReport(args.input);
-      return { content: [{ type: "text", text: formatReport(report) }, { type: "text", text: JSON.stringify(report, null, 2) }], structuredContent: report };
     }
     throw new Error(`Unknown tool: ${params.name}`);
   } catch (error2) {

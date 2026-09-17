@@ -1,22 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import os from 'node:os';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { buildReport, formatReport, CASE_IDS } from '../plugins/core/src/report.mjs';
+import { buildReport, CASE_IDS } from '../plugins/core/src/report.mjs';
 
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   return {
-    schemaVersion: 1, runId: 'test-run', client: { name: 'Test client', version: '1.0' },
+    schemaVersion: 1, client: { name: 'Test client', version: '1.0' },
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
         kind: 'mcp-stdio', server,
         evidence: {
-          version: 1, runId: 'test-run', server, root, resolvedData: data,
+          version: 1, server, root, resolvedData: data,
           cwd: server === 'default' ? root : server === 'data' ? data : flavor.join(root, 'probe-workdir'),
           argv: ['default', 'arg with spaces', '', root, data, '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
           env: { PLUGIN_ROOT: root, PLUGIN_DATA: data, APC_VALUE: 'fixture value with spaces',
@@ -168,7 +164,7 @@ test('unknown keys, duplicate observations, identities, versions, types and over
     [(v) => { runtime(v).server = 'other'; }, /must match observation.server/],
     [(v) => { v.observations[3].server = 'other'; }, /expected one of/],
     [(v) => { runtime(v).version = 2; }, /expected 1/],
-    [(v) => { runtime(v).runId = 'stale-run'; }, /must match input.runId/],
+    [(v) => { runtime(v).runId = 'legacy-run'; }, /runId: unknown field/],
     [(v) => { runtime(v).root = 'relative'; }, /absolute/],
     [(v) => { delete runtime(v).resolvedData; }, /resolvedData: required/],
     [(v) => { runtime(v).resolvedData = 'relative'; }, /absolute/],
@@ -176,7 +172,7 @@ test('unknown keys, duplicate observations, identities, versions, types and over
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
     [(v) => { v.client.name = 'a'.repeat(201); }, /at most 200/],
-    [(v) => { v.runId = 'x'.repeat(101); }, /at most 100/],
+    [(v) => { v.runId = 'legacy-run'; }, /runId: unknown field/],
     [(v) => { v.collection = { kind: 'client', route: 'installation' }; }, /input.collection: unknown field/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
     [(v) => { v.observations[3].kind = 'runtime'; }, /expected one of: mcp-stdio, skill/],
@@ -205,40 +201,6 @@ test('failure diagnostics preserve value boundaries and escape control character
   assert.match(expansion, /APC_LITERAL: expected .*; observed "changed"/);
   assert.ok(!expansion.includes('undefined'));
 });
-
-test('CLI succeeds for evaluated outcomes and reserves nonzero exit for report errors', async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'apc-report-test-'));
-  try {
-    const filename = path.join(directory, 'observations.json');
-    const cli = fileURLToPath(new URL('../plugins/core/src/report-cli.mjs', import.meta.url));
-    const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
-    const value = input();
-    await writeFile(filename, JSON.stringify(value));
-    const json = run(filename, '--json');
-    assert.equal(json.status, 0, json.stderr);
-    assert.deepEqual(JSON.parse(json.stdout), buildReport(value));
-    assert.equal(run(filename).stdout.trim(), formatReport(buildReport(value)));
-    runtime(value).argv = [];
-    await writeFile(filename, JSON.stringify(value));
-    const failed = run(filename, '--json');
-    assert.equal(failed.status, 0, failed.stderr);
-    assert.ok(JSON.parse(failed.stdout).summary.fail > 0);
-    assert.equal(run(filename).status, 0);
-    value.observations = [];
-    await writeFile(filename, JSON.stringify(value));
-    const missing = run(filename, '--json');
-    assert.equal(missing.status, 0, missing.stderr);
-    assert.equal(JSON.parse(missing.stdout).summary.not_verified, 14);
-    assert.equal(run(filename).status, 0);
-    await writeFile(filename, JSON.stringify({ ...value, observations: 'invalid' }));
-    assert.equal(run(filename, '--json').status, 2);
-    await writeFile(filename, '{broken');
-    assert.equal(run(filename).status, 2);
-    assert.equal(run(filename, '--unknown').status, 2);
-    assert.match(run().stderr, /Usage:/);
-  } finally { await rm(directory, { recursive: true, force: true }); }
-});
-
 
 test('skill discovery aggregate requires all immediate child skills and preserves partial observations', () => {
   for (let included = 0; included < 8; included += 1) {

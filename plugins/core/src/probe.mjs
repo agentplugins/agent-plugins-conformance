@@ -4,7 +4,6 @@ import { isAbsolute } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { buildReport, formatReport } from './report.mjs';
 
 const serverName = process.argv[2];
 if (!['default', 'relative', 'root', 'data'].includes(serverName)) {
@@ -32,31 +31,20 @@ const server = new Server({ name: `agent-plugins-conformance-${serverName}`, ver
   { capabilities: { tools: {} } });
 const observeTool = {
   name: 'observe',
-  description: 'Return this process launch evidence. Carry the observation object from structuredContent (or parsed JSON text) unchanged to report; exclude the MCP result wrapper. Reads only fixture variables.',
-  inputSchema: { type: 'object', properties: { runId: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['runId'], additionalProperties: false },
+  description: 'Return this process launch evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper. Reads only fixture variables.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };
-const reportTool = {
-  name: 'report',
-  description: 'Evaluate collected observations and return one deterministic report in JSON and human-readable form. Never execute probes to fill missing observations.',
-  inputSchema: { type: 'object', properties: { input: { type: 'object', description: 'Report input: schemaVersion 1, runId, client {name,version}, observations array of unchanged observe results or client-discovered skill markers.' } }, required: ['input'], additionalProperties: false },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-};
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: serverName === 'default' ? [observeTool, reportTool] : [observeTool] }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [observeTool] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
     const args = params.arguments;
     if (params.name === 'observe') {
-      if (!args || Object.keys(args).length !== 1 || typeof args.runId !== 'string' || !args.runId.trim() || args.runId.length > 100) {
-        throw new Error('observe requires only a nonempty runId string of at most 100 characters');
+      if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length !== 0) {
+        throw new Error('observe requires an empty object');
       }
-      const observation = { kind: 'mcp-stdio', server: serverName, evidence: { version: 1, runId: args.runId, ...launch } };
+      const observation = { kind: 'mcp-stdio', server: serverName, evidence: { version: 1, ...launch } };
       return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
-    }
-    if (params.name === 'report' && serverName === 'default') {
-      if (!args || Object.keys(args).length !== 1 || !Object.hasOwn(args, 'input')) throw new Error('report requires only an input object');
-      const report = buildReport(args.input);
-      return { content: [{ type: 'text', text: formatReport(report) }, { type: 'text', text: JSON.stringify(report, null, 2) }], structuredContent: report };
     }
     throw new Error(`Unknown tool: ${params.name}`);
   } catch (error) {

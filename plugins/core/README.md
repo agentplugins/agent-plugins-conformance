@@ -8,15 +8,15 @@ This initial release covers skill discovery, MCP tool availability, working dire
 
 1. Make Node.js 22 or newer available as `node` on the client's executable search path. The committed MCP bundle includes the official MCP SDK; using the plugin requires no dependency installation or build.
 2. Install this directory through the client's Agent Plugins support so its loader discovers the root-level `plugin.json`, `mcp.json`, and plugin components.
-3. Ask the agent to run the plugin's `conformance-guide` skill.
+3. Ask the agent to run the plugin's `conformance-guide` skill and supply `outputPath`, an absolute path for the JSON report. The agent must be able to execute commands.
 
-The [conformance guide](skills/conformance-guide/SKILL.md) collects skill markers and MCP probe observations, submits them to the deterministic reporter, and returns its human-readable summary and JSON report. It is the canonical procedure for running the checks.
+The [conformance guide](skills/conformance-guide/SKILL.md) is the canonical collection procedure. Its reporting script initializes the destination, then records each skill marker and MCP probe observation as it arrives. It evaluates the accumulated evidence and updates the JSON file directly, with only brief acknowledgments returned to the agent. Missing parent directories are created. Starting a new run replaces any previous report at the requested path; concurrently active runs need different output paths. No run ID or intermediate observations file is required.
 
-If the client exposes the MCP servers but no skills, supply that same guide to the agent as instructions. Supplying a guide does not establish native skill discovery; missing skill observations remain `not_verified`.
+When collection ends, the agent identifies the report location and any collection limitations. Human-readable presentation is optional, as described below.
 
 ## Use the results
 
-Preserve the reporter's human-readable summary and save its JSON report as `report.json` for the queries below. The JSON preserves the input observations and includes a flat `results` array.
+Read the JSON file at the requested `outputPath` after the guide finishes. There is no need to extract JSON from the agent's response. The report preserves the latest observation recorded for each skill or server and includes a flat `results` array. A saved report may also be an incomplete snapshot if collection was interrupted; file existence alone is not a completion signal.
 
 Cases are `pass`, `fail`, or `not_verified`. Missing observations do not by themselves establish failure or exemption from the specification. Skill discovery passes when all three markers are correct, fails if any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of discovery; matching markers are not independent proof of the loading route. Consumers decide which results to require.
 
@@ -24,13 +24,13 @@ Cases are `pass`, `fail`, or `not_verified`. Missing observations do not by them
 
 Each result has an `id`, human-readable `label`, `status`, `detail`, and `specSections`. IDs form a hierarchy: `skills.*` covers skills and `mcp.stdio.*` covers stdio MCP behavior. Prefix queries include new checks added within the selected scope.
 
-For example, require all stdio MCP checks to pass:
+For example, require all stdio MCP checks to pass (replace `/absolute/path/to/report.json` with your output path):
 
 ```sh
 jq -e '
   [.results[] | select(.id | startswith("mcp.stdio."))]
   | length > 0 and all(.[]; .status == "pass")
-' report.json
+' '/absolute/path/to/report.json'
 ```
 
 The trailing dot selects a complete namespace segment. The nonempty check prevents a misspelled or absent scope from succeeding without evaluating any cases. To exclude a particular check, change the selection to `select((.id | startswith("mcp.stdio.")) and .id != "mcp.stdio.env.plugin-data-absolute")`. To require only particular checks, select their IDs and verify that each requested ID is present.
@@ -38,19 +38,22 @@ The trailing dot selects a complete namespace segment. The nonempty check preven
 List unresolved checks with their descriptions:
 
 ```sh
-jq '.results[] | select(.status != "pass") | {id, label, status, detail}' report.json
+jq '.results[] | select(.status != "pass") | {id, label, status, detail}' '/absolute/path/to/report.json'
 ```
 
-### Evaluate saved observations with the CLI
+### Summarize a saved report
 
-If you have saved the collected report input as `observations.json`, you can evaluate it from the plugin directory:
+The read-only summarizer renders the outcomes already saved in a JSON report. It neither changes the file nor re-evaluates observations. Users and CI can invoke it when a human-readable view is useful; the collecting agent does not invoke it automatically.
+
+From a checkout of the conformance repository, run:
 
 ```sh
-node src/report-cli.mjs observations.json
-node src/report-cli.mjs observations.json --json > report.json
+node plugins/core/skills/conformance-guide/scripts/summarize.mjs '/absolute/path/to/report.json'
 ```
 
-The CLI consumes report input containing the run details and observations, as described in the guide. It uses the same evaluator as the MCP reporter. It exits 0 when it produces a report, including reports with failures or no observations, and 2 for invalid input or a reporting error.
+For an installed plugin, the script is at `skills/conformance-guide/scripts/summarize.mjs` relative to its known installation path. If you do not know that path, ask the agent for the exact command resolved from its client-loaded guide, or ask it to summarize the saved report.
+
+These shell examples quote a POSIX-style absolute path; use an absolute path and quoting appropriate to your operating system and shell. Reporting and summarizing errors are command failures. A valid report containing `fail` or `not_verified` results is still successfully produced; apply your own acceptance policy to its results.
 
 ## Coverage
 

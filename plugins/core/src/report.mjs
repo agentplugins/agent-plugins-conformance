@@ -56,10 +56,9 @@ function samePath(actual, expected, flavor) {
 }
 
 function validate(input) {
-  object(input, ['schemaVersion', 'runId', 'client', 'observations'],
-    ['schemaVersion', 'runId', 'client', 'observations'], 'input');
+  object(input, ['schemaVersion', 'client', 'observations'],
+    ['schemaVersion', 'client', 'observations'], 'input');
   if (input.schemaVersion !== 1) invalid('input.schemaVersion', 'expected 1');
-  string(input.runId, 'input.runId', 100);
   object(input.client, ['name', 'version'], ['name', 'version'], 'input.client');
   string(input.client.name, 'input.client.name', 200);
   string(input.client.version, 'input.client.version', 200);
@@ -76,10 +75,9 @@ function validate(input) {
       if (runtime.has(observation.server)) invalid(at, `duplicate mcp-stdio observation: ${observation.server}`);
       const evidenceAt = `${at}.evidence`;
       const evidence = observation.evidence;
-      const keys = ['version', 'runId', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
+      const keys = ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
-      if (evidence.runId !== input.runId) invalid(`${evidenceAt}.runId`, 'must match input.runId');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
       for (const field of ['root', 'cwd']) {
         string(evidence[field], `${evidenceAt}.${field}`);
@@ -123,7 +121,7 @@ export function buildReport(input) {
   set('skills.discovery.immediate-children', wrongSkills.length ? 'fail' : missingSkills.length ? 'not_verified' : 'pass',
     skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for all three immediate child skills.');
   for (const [server, evidence] of runtime) {
-    set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server and run.');
+    set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server.');
     const flavor = pathFlavor(evidence.root);
     const target = server === 'default' ? evidence.root
       : server === 'data' ? evidence.resolvedData
@@ -172,7 +170,6 @@ export function buildReport(input) {
   return {
     schemaVersion: 1,
     specVersion: '1.0.0',
-    runId: input.runId,
     client: { name: input.client.name, version: input.client.version },
     observations: [
       ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
@@ -181,7 +178,7 @@ export function buildReport(input) {
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
         return { kind: 'mcp-stdio', server, evidence: {
-          version: evidence.version, runId: evidence.runId, server: evidence.server,
+          version: evidence.version, server: evidence.server,
           root: evidence.root, cwd: evidence.cwd, resolvedData: evidence.resolvedData, argv: [...evidence.argv],
           env: Object.fromEntries(ENV_KEYS.filter((key) => Object.hasOwn(evidence.env, key)).map((key) => [key, evidence.env[key]])),
         } };
@@ -195,48 +192,4 @@ export function buildReport(input) {
       'Working directories use normalized absolute paths under the producing operating system path rules and the data path resolved by the probe; the reporter performs no filesystem lookup.',
     ],
   };
-}
-
-export function formatReport(report) {
-  const safe = (value) => value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (character) => {
-    const escaped = JSON.stringify(character).slice(1, -1);
-    return escaped === character ? `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}` : escaped;
-  });
-  const row = (label, pass, fail, unverified) => [
-    label.padEnd(11), String(pass).padStart(6), String(fail).padStart(6), String(unverified).padStart(12),
-  ].join('  ');
-  const lines = [
-    `Agent Plugins conformance — spec ${safe(report.specVersion)}`,
-    `Client: ${safe(report.client.name)}, version ${safe(report.client.version)}`,
-    `Run: ${safe(report.runId)}`,
-    '',
-    row('Checks', 'Passed', 'Failed', 'Not verified'),
-  ];
-  for (const [prefix, label] of [['skills.', 'Skills'], ['mcp.', 'MCP']]) {
-    const results = report.results.filter((result) => result.id.startsWith(prefix));
-    const count = (status) => results.filter((result) => result.status === status).length;
-    lines.push(row(label, count('pass'), count('fail'), count('not_verified')));
-  }
-  const failures = report.results.filter(({ status }) => status === 'fail');
-  if (failures.length) {
-    lines.push('', 'Failed');
-    for (const { id, label, detail } of failures) {
-      lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
-    }
-  }
-  const unverified = report.results.filter(({ status }) => status === 'not_verified');
-  if (unverified.length) {
-    lines.push('', 'Not verified');
-    const servers = new Set(report.observations.filter(({ kind }) => kind === 'mcp-stdio').map(({ server }) => server));
-    const missingServers = SERVERS.filter((server) => !servers.has(server));
-    if (missingServers.length) lines.push(`  MCP servers: ${missingServers.join(', ')} — no stdio MCP observations.`);
-    for (const { id, label, detail } of unverified) {
-      const grouped = missingServers.some((server) =>
-        id === `mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}` ||
-        id === `mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}` ||
-        (server === 'default' && (id.startsWith('mcp.stdio.env.') || id.startsWith('mcp.stdio.args.'))));
-      if (!grouped) lines.push(`  ${label} (${id})`, `    ${safe(detail)}`);
-    }
-  }
-  return lines.join('\n');
 }

@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
+import { cp, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { buildReport, formatReport } from '../plugins/core/src/report.mjs';
+import { buildReport } from '../plugins/core/src/report.mjs';
 
 // Reference fixture launcher only. This explicitly implements the expansion
 // under test; it is NOT evidence that a third-party client loaded the plugin.
@@ -45,22 +44,21 @@ async function connect(fixture, mode, override = {}) {
   await client.connect(transport);
   return client;
 }
-const input = (observations) => ({ schemaVersion: 1, runId: 'reference-test', client: { name: 'SDK reference harness', version: '1.30.0' }, observations });
+const input = (observations) => ({ schemaVersion: 1, client: { name: 'SDK reference harness', version: '1.30.0' }, observations });
 
-test('copied plugin runs MCP probes and CLI reporting without node_modules', { timeout: 30_000 }, async (t) => {
+test('copied plugin runs only MCP observation tools without node_modules', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
   const observations = [];
-  let defaultClient;
   for (const mode of ['default', 'relative', 'root', 'data']) {
     const client = await connect(files, mode);
-    if (mode === 'default') defaultClient = client;
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map(({ name }) => name), mode === 'default' ? ['observe', 'report'] : ['observe']);
-    const result = await client.callTool({ name: 'observe', arguments: { runId: 'reference-test' } });
+    assert.deepEqual(tools.map(({ name }) => name), ['observe']);
+    const result = await client.callTool({ name: 'observe', arguments: {} });
     assert.ok(!result.isError);
     const observation = JSON.parse(result.content[0].text);
     assert.deepEqual(result.structuredContent, observation);
     assert.equal(observation.evidence.root, files.root);
+    assert.equal(Object.hasOwn(observation.evidence, 'runId'), false);
     assert.equal(observation.evidence.env.APC_SHOULD_NOT_LEAK, undefined);
     observations.push(observation);
   }
@@ -69,28 +67,12 @@ test('copied plugin runs MCP probes and CLI reporting without node_modules', { t
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 13);
   assert.equal(direct.summary.not_verified, 1);
-  const result = await defaultClient.callTool({ name: 'report', arguments: { input: reportInput } });
-  assert.deepEqual(result.structuredContent, direct);
-  assert.deepEqual(JSON.parse(result.content[1].text), direct);
-  const repeated = await defaultClient.callTool({ name: 'report', arguments: { input: reportInput } });
-  assert.deepEqual(repeated, result);
-
-  // Exercise the shell fallback from the installed copy, outside the checkout.
-  const filename = join(files.root, 'observations.json');
-  await writeFile(filename, JSON.stringify(reportInput));
-  const run = (...args) => spawnSync(process.execPath, ['src/report-cli.mjs', 'observations.json', ...args], { cwd: files.root, encoding: 'utf8', timeout: 10_000 });
-  const json = run('--json');
-  assert.equal(json.status, 0, json.stderr);
-  assert.deepEqual(JSON.parse(json.stdout), direct);
-  const human = run();
-  assert.equal(human.status, 0, human.stderr);
-  assert.equal(human.stdout.trim(), formatReport(direct));
 });
 
 test('actual process deviations are evaluated as failures, not missing evidence', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
   const client = await connect(files, 'default', { cwd: files.data, env: { PLUGIN_ROOT: files.data } });
-  const result = await client.callTool({ name: 'observe', arguments: { runId: 'reference-test' } });
+  const result = await client.callTool({ name: 'observe', arguments: {} });
   const report = buildReport(input([result.structuredContent]));
   for (const id of ['mcp.stdio.cwd.omitted', 'mcp.stdio.env.plugin-root', 'mcp.stdio.env.plugin-data-absolute', 'mcp.stdio.env.configured-value']) {
     assert.equal(report.results.find((result) => result.id === id).status, 'fail', id);
@@ -101,22 +83,22 @@ test('actual process deviations are evaluated as failures, not missing evidence'
 test('MCP tool errors remain errors and do not create success observations', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
   const client = await connect(files, 'default');
-  for (const arguments_ of [{}, { runId: '' }, { runId: 'x', extra: true }]) {
+  for (const arguments_ of [{ runId: '' }, { runId: 'x' }, { extra: true }]) {
     const result = await client.callTool({ name: 'observe', arguments: arguments_ });
     assert.equal(result.isError, true);
     assert.equal(result.structuredContent, undefined);
   }
   const result = await client.callTool({ name: 'report', arguments: { input: { status: 'pass' } } });
   assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Unknown tool: report/);
 });
-
 
 test('data cwd accepts a client-selected directory alias', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);
   const alias = `${files.data}-alias`;
   await symlink(files.data, alias, 'junction');
   const client = await connect({ ...files, data: alias }, 'data');
-  const result = await client.callTool({ name: 'observe', arguments: { runId: 'reference-test' } });
+  const result = await client.callTool({ name: 'observe', arguments: {} });
   assert.equal(result.structuredContent.evidence.env.PLUGIN_DATA, alias);
   assert.equal(result.structuredContent.evidence.resolvedData, files.data);
   assert.equal(result.structuredContent.evidence.cwd, files.data);

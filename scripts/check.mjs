@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
-for (const directory of ['plugins/core/src', 'scripts', 'test']) {
+for (const directory of ['plugins/core/src', 'plugins/core/skills/conformance-guide/scripts', 'scripts', 'test']) {
   for (const name of (await readdir(directory)).filter((name) => name.endsWith('.mjs'))) {
     const file = `${directory}/${name}`;
     const result = spawnSync(process.execPath, ['--check', file], { stdio: 'inherit' });
