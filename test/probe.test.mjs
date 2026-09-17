@@ -44,7 +44,7 @@ async function connect(fixture, mode, override = {}) {
   await client.connect(transport);
   return client;
 }
-const input = (observations) => ({ schemaVersion: 1, client: { name: 'SDK reference harness', version: '1.30.0' }, observations });
+const input = (observations) => ({ schemaVersion: 1, observations });
 
 test('copied plugin runs only MCP observation tools without node_modules', { timeout: 30_000 }, async (t) => {
   const files = await fixture(t);

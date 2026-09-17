@@ -7,7 +7,7 @@ function input() {
   const root = '/fixture/plugin';
   const data = '/state/plugin';
   return {
-    schemaVersion: 1, client: { name: 'Test client', version: '1.0' },
+    schemaVersion: 1,
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
@@ -28,7 +28,6 @@ test('all-pass human report contains a compact check table and no empty sections
   const human = formatReport(buildReport(input()));
   assert.equal(human, [
     'Agent Plugins conformance — spec 1.0.0',
-    'Client: Test client, version 1.0',
     '',
     'Checks       Passed  Failed  Not verified',
     'Skills            1       0             0',
@@ -73,13 +72,10 @@ test('unverified checks with supplied observations keep their individual reasons
   assert.match(human, /PLUGIN_DATA could not be resolved/);
 });
 
-test('human metadata and diagnostic values cannot inject terminal controls or fake lines', () => {
+test('human diagnostic values cannot inject terminal controls or fake lines', () => {
   const value = input();
-  value.client.name = 'Client\nFAKE PASS';
-  value.client.version = '1\r2';
   value.observations[3].evidence.env.APC_VALUE = 'wrong\nFAKE PASS\x1b[2J\x85';
   const human = formatReport(buildReport(value));
-  assert.match(human, /Client: Client\\nFAKE PASS, version 1\\r2/);
   assert.match(human, /wrong\\nFAKE PASS\\u001b\[2J\\u0085/);
   assert.doesNotMatch(human, /[\x00-\x09\x0b-\x1f\x7f-\x9f]/);
   assert.doesNotMatch(human, /\nFAKE PASS/);

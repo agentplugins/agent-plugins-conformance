@@ -11,12 +11,12 @@ Use the reporting script beside this skill to maintain the JSON report as you co
 
 ## Start the report
 
-1. Identify the absolute JSON report path supplied by the user. If none was supplied, ask for it before starting. Record the client name and version, using `unknown` when unavailable.
+1. Identify the absolute JSON report path supplied by the user. If none was supplied, ask for it before starting.
 2. Locate `scripts/report.mjs` relative to this client-loaded skill and use its absolute path in commands. Node.js 22 or newer must be available as `node`, and you must have a command-execution tool. If either is unavailable, explain the limitation.
-3. Invoke the script with the user's absolute report path as its only argument. Supply this JSON message through stdin with the actual client details:
+3. Invoke the script with the user's absolute report path as its only argument. Supply this JSON message through stdin:
 
    ```json
-   {"action":"start","client":{"name":"<client name>","version":"<client version or unknown>"}}
+   {"action":"start"}
    ```
 
    Start every new run this way and confirm that initialization succeeds before collecting observations. The script creates missing parent directories and replaces any existing report at that exact path with a fresh report. All checks initially have status `not_verified`. Concurrently active runs must use distinct report paths.
@@ -31,11 +31,11 @@ Send one JSON message through the command tool's stdin facility. If the tool acc
 
 ```sh
 node '/absolute/path/to/conformance-guide/scripts/report.mjs' '/absolute/path/to/report.json' <<'CONFORMANCE_INPUT'
-{"action":"start","client":{"name":"Example Client","version":"unknown"}}
+{"action":"start"}
 CONFORMANCE_INPUT
 ```
 
-Replace the example paths and client details. Write the report only to the destination the user requested.
+Replace the example paths. Write the report only to the destination the user requested.
 
 ## Record each observation
 

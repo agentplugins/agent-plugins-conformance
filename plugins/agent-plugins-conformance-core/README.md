@@ -20,28 +20,14 @@ When collection ends, the agent gives the report's absolute path and any collect
 
 ## Read the results
 
-The report records the client name and version, the latest observation for each skill or server, a flat `results` array, summary counts, and notes about the evidence. Each result contains its case `id`, human-readable `label`, `status`, `detail`, and relevant `specSections`.
+The report records the latest observation for each skill or server, a flat `results` array, summary counts, and notes about the evidence.
 
-The three statuses mean:
-
-| Status | Meaning |
-| --- | --- |
-| `pass` | The submitted evidence satisfies the check. |
-| `fail` | The submitted evidence contradicts an expectation checked by the fixture. |
-| `not_verified` | Evidence needed to decide the check is unavailable. |
-
-For example, skill discovery passes when all three reported markers match, fails when any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
-
-This JSON excerpt shows evaluator output for an illustrative run with a missing pair of skill observations, a successful default-server tool call, and an incorrect configured environment value. The observations, notes, and eleven other results are omitted here; the summary counts cover all fourteen results.
+The following example is abbreviated: observations, notes, and some results are omitted. The summary covers the complete report.
 
 ```json
 {
   "schemaVersion": 1,
   "specVersion": "1.0.0",
-  "client": {
-    "name": "Example Client",
-    "version": "unknown"
-  },
   "results": [
     {
       "id": "skills.discovery.immediate-children",
@@ -73,6 +59,18 @@ This JSON excerpt shows evaluator output for an illustrative run with a missing 
   }
 }
 ```
+
+Each result identifies its case through `id` and `label`, explains the outcome in `detail`, and cites the relevant specification sections in `specSections`.
+
+The three statuses mean:
+
+| Status | Meaning |
+| --- | --- |
+| `pass` | The submitted evidence satisfies the check. |
+| `fail` | The submitted evidence contradicts an expectation checked by the fixture. |
+| `not_verified` | Evidence needed to decide the check is unavailable. |
+
+For example, skill discovery passes when all three reported markers match, fails when any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
 
 ### Choose required checks
 
@@ -143,7 +141,7 @@ Reporting and summarizing errors are command failures. Producing a valid report 
 
 ## Coverage
 
-The plugin evaluates fourteen cases. The environment and argument checks use the `default` server's observation; each of the other servers supplies tool-availability and working-directory evidence.
+The environment and argument checks use the `default` server's observation; each of the other servers supplies tool-availability and working-directory evidence.
 
 | Case IDs | What the check establishes |
 | --- | --- |
@@ -158,4 +156,4 @@ The plugin evaluates fourteen cases. The environment and argument checks use the
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |
 
-The expansion fixtures do not arrange replacement values containing placeholder text, so they do not establish non-recursive replacement. This plugin exercises valid stdio configurations; invalid configuration handling, failure isolation, and remote MCP transports are outside its coverage.
+This plugin exercises valid stdio configurations; invalid configuration handling, failure isolation, and remote MCP transports are outside its coverage.

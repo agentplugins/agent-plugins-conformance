@@ -8,10 +8,14 @@ function validateMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) {
     throw new Error('Input must be an object');
   }
-  const field = message.action === 'start' ? 'client' : message.action === 'record' ? 'observation' : null;
-  if (!field) throw new Error('action must be start or record');
-  if (Object.keys(message).length !== 2 || !Object.hasOwn(message, field)) {
-    throw new Error(`${message.action} requires only action and ${field}`);
+  if (message.action === 'start') {
+    if (Object.keys(message).length !== 1) throw new Error('start requires only action');
+  } else if (message.action === 'record') {
+    if (Object.keys(message).length !== 2 || !Object.hasOwn(message, 'observation')) {
+      throw new Error('record requires only action and observation');
+    }
+  } else {
+    throw new Error('action must be start or record');
   }
 }
 
@@ -43,7 +47,7 @@ try {
   validateMessage(message);
   let report;
   if (message.action === 'start') {
-    report = buildReport({ schemaVersion: 1, client: message.client, observations: [] });
+    report = buildReport({ schemaVersion: 1, observations: [] });
     await mkdir(dirname(outputPath), { recursive: true });
   } else {
     let saved;
@@ -54,15 +58,15 @@ try {
       throw error;
     }
     validateSavedReport(saved);
-    buildReport({ schemaVersion: saved.schemaVersion, client: saved.client, observations: saved.observations });
+    buildReport({ schemaVersion: saved.schemaVersion, observations: saved.observations });
     // Validate the complete new observation before deriving its replacement key.
-    buildReport({ schemaVersion: 1, client: saved.client, observations: [message.observation] });
+    buildReport({ schemaVersion: 1, observations: [message.observation] });
     const observation = message.observation;
     const sameKey = (existing) => existing.kind === observation.kind &&
       (observation.kind === 'skill' ? existing.skill === observation.skill : existing.server === observation.server);
     const observations = saved.observations.filter((existing) => !sameKey(existing));
     observations.push(observation);
-    report = buildReport({ schemaVersion: saved.schemaVersion, client: saved.client, observations });
+    report = buildReport({ schemaVersion: saved.schemaVersion, observations });
   }
   await writeReport(outputPath, report);
   console.log(message.action === 'start' ? 'Report started.' : 'Observation recorded.');

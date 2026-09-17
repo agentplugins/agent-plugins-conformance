@@ -10,7 +10,7 @@ import { formatReport } from '../plugins/agent-plugins-conformance-core/src/repo
 
 const plugin = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core', import.meta.url));
 const script = path.join(plugin, 'skills/conformance-guide/scripts/summarize.mjs');
-const report = () => buildReport({ schemaVersion: 1, client: { name: 'Test client', version: '1.0' }, observations: [] });
+const report = () => buildReport({ schemaVersion: 1, observations: [] });
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
 
 test('summarizer renders saved judgments, including future IDs, without reevaluating observations or writing artifacts', async (t) => {
@@ -63,7 +63,6 @@ test('malformed saved reports fail instead of printing misleading partial summar
   const changes = [
     (value) => { value.schemaVersion = 2; },
     (value) => { value.specVersion = null; },
-    (value) => { value.client.name = ''; },
     (value) => { value.observations = {}; },
     (value) => { value.results = {}; },
     (value) => { value.results[0].status = 'unknown'; },
@@ -102,8 +101,6 @@ test('all displayed saved strings and errors escape terminal controls and extra 
   const value = report();
   const injection = '\nFAKE\x1b[2J\x7f\x85\u2028\u202e';
   value.specVersion += injection;
-  value.client.name += injection;
-  value.client.version += injection;
   for (const field of ['id', 'label', 'detail']) value.results[0][field] += injection;
   await writeFile(filename, JSON.stringify(value));
   const output = run(filename);

@@ -6,7 +6,7 @@ import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance-core
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   return {
-    schemaVersion: 1, client: { name: 'Test client', version: '1.0' },
+    schemaVersion: 1,
     observations: [
       ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({

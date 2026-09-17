@@ -22,9 +22,6 @@ export function validateSavedReport(report) {
   object(report, 'report');
   if (report.schemaVersion !== 1) invalid('report.schemaVersion', 'expected 1');
   string(report.specVersion, 'report.specVersion');
-  object(report.client, 'report.client');
-  string(report.client.name, 'report.client.name');
-  string(report.client.version, 'report.client.version');
   if (!Array.isArray(report.observations)) invalid('report.observations', 'expected an array');
   if (!Array.isArray(report.results)) invalid('report.results', 'expected an array');
   const counts = { pass: 0, fail: 0, not_verified: 0, total: report.results.length };
@@ -61,7 +58,6 @@ export function formatReport(report) {
   ].join('  ');
   const lines = [
     `Agent Plugins conformance — spec ${escapeText(report.specVersion)}`,
-    `Client: ${escapeText(report.client.name)}, version ${escapeText(report.client.version)}`,
     '',
     row('Checks', { pass: 'Passed', fail: 'Failed', not_verified: 'Not verified' }),
   ];

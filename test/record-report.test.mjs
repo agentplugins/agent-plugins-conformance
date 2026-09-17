@@ -8,8 +8,7 @@ import test from 'node:test';
 import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
 
 const script = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core/skills/conformance-guide/scripts/report.mjs', import.meta.url));
-const client = { name: 'Reference client', version: '1' };
-const start = { action: 'start', client };
+const start = { action: 'start' };
 const skill = (name = 'alpha', marker = `APC_${name.toUpperCase()}_V1`) => ({ kind: 'skill', skill: `conformance-${name}`, marker });
 const mcp = () => ({
   kind: 'mcp-stdio', server: 'default', evidence: {
@@ -21,7 +20,7 @@ const mcp = () => ({
     },
   },
 });
-const expected = (observations, metadata = client) => buildReport({ schemaVersion: 1, client: metadata, observations });
+const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'record-report-'));
@@ -42,15 +41,14 @@ async function fixture(t) {
   return { directory, outputPath, run, success, record, read };
 }
 
-test('start creates nested parents and replaces all previous evidence and metadata', async (t) => {
+test('start creates nested parents and replaces all previous evidence', async (t) => {
   const f = await fixture(t);
   f.success(start);
   assert.deepEqual(await f.read(), expected([]));
   f.record(skill());
   f.record(mcp());
-  const nextClient = { name: 'Another client', version: '2' };
-  f.success({ action: 'start', client: nextClient });
-  assert.deepEqual(await f.read(), expected([], nextClient));
+  f.success(start);
+  assert.deepEqual(await f.read(), expected([]));
   // Explicit start also recovers from a malformed old artifact.
   await writeFile(f.outputPath, '{broken');
   f.success(start);
@@ -86,9 +84,9 @@ test('invalid requests fail without changing an existing report', async (t) => {
   f.success(start);
   const before = await readFile(f.outputPath, 'utf8');
   const requests = [
-    '', '{', 'null', '[]', {}, { action: 'other' }, { action: 'start' },
-    { action: 'start', client, extra: true }, { action: 'start', client: { name: 'missing version' } },
-    { action: 'record' }, { action: 'record', observation: skill(), client },
+    '', '{', 'null', '[]', {}, { action: 'other' },
+    { action: 'start', extra: true },
+    { action: 'record' }, { action: 'record', observation: skill(), extra: true },
     { action: 'record', observation: { ...skill(), arbitrary: true } },
     { action: 'record', observation: { kind: 'mcp-stdio', server: 'default', evidence: {} } },
   ];
@@ -119,7 +117,7 @@ test('malformed saved state is rejected even when its bad observation would be r
   const f = await fixture(t);
   await mkdir(join(f.directory, 'nested directory'));
   const malformed = [
-    '{', 'null', JSON.stringify({ schemaVersion: 1, client, observations: [] }),
+    '{', 'null', JSON.stringify({ schemaVersion: 1, observations: [] }),
     JSON.stringify({ ...expected([]), summary: { pass: 999, fail: 0, not_verified: 0, total: 999 } }),
     JSON.stringify({ ...expected([skill()]), observations: [{ ...skill(), unexpected: true }] }),
   ];

@@ -55,12 +55,9 @@ function samePath(actual, expected, flavor) {
 }
 
 function validate(input) {
-  object(input, ['schemaVersion', 'client', 'observations'],
-    ['schemaVersion', 'client', 'observations'], 'input');
+  object(input, ['schemaVersion', 'observations'],
+    ['schemaVersion', 'observations'], 'input');
   if (input.schemaVersion !== 1) invalid('input.schemaVersion', 'expected 1');
-  object(input.client, ['name', 'version'], ['name', 'version'], 'input.client');
-  string(input.client.name, 'input.client.name');
-  string(input.client.version, 'input.client.version');
   array(input.observations, 'input.observations');
   const runtime = new Map();
   const skills = new Map();
@@ -168,7 +165,6 @@ export function buildReport(input) {
   return {
     schemaVersion: 1,
     specVersion: '1.0.0',
-    client: { name: input.client.name, version: input.client.version },
     observations: [
       ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
         kind: 'skill', skill, marker: skills.get(skill),
