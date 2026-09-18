@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { observeDataWrite } from './data-write.mjs';
 
 const serverName = process.argv[2];
 if (!['default', 'relative', 'root', 'data'].includes(serverName)) {
@@ -31,9 +32,11 @@ const server = new Server({ name: `agent-plugins-conformance-${serverName}`, ver
   { capabilities: { tools: {} } });
 const observeTool = {
   name: 'observe',
-  description: 'Return this process launch evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper. Reads only fixture variables.',
+  description: 'Return this process launch evidence, including only fixture environment variables.' +
+    (serverName === 'default' ? ' Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error.' : '') +
+    ' Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  annotations: { readOnlyHint: serverName !== 'default', destructiveHint: false, idempotentHint: serverName !== 'default', openWorldHint: false },
 };
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [observeTool] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
@@ -44,6 +47,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
         throw new Error('observe requires an empty object');
       }
       const observation = { kind: 'mcp-stdio', server: serverName, evidence: { version: 1, ...launch } };
+      if (serverName === 'default') observation.evidence.dataWrite = observeDataWrite(process.env.PLUGIN_DATA);
       return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
     }
     throw new Error(`Unknown tool: ${params.name}`);

@@ -48,12 +48,45 @@ test('successful formatting is independent of pass, fail, or missing evidence', 
   for (const status of ['pass', 'fail', 'not_verified']) {
     const value = report();
     for (const result of value.results) result.status = status;
-    value.summary = { pass: 0, fail: 0, not_verified: 0, total: 14, [status]: 14 };
+    value.summary = { pass: 0, fail: 0, not_verified: 0, total: 15, [status]: 15 };
     await writeFile(filename, JSON.stringify(value));
     const output = run(filename);
     assert.equal(output.status, 0, output.stderr);
     assert.equal(output.stdout.trimEnd(), formatReport(value));
   }
+});
+
+test('summarizer renders a saved cleanup warning from canonical evaluator output', async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'apc-summary-warning-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filename = path.join(directory, 'report.json');
+  const value = buildReport({
+    schemaVersion: 1,
+    observations: [{
+      kind: 'mcp-stdio', server: 'default', evidence: {
+        version: 1, server: 'default', root: '/plugin', cwd: '/plugin', resolvedData: '/data',
+        dataWrite: {
+          path: '/data/.agent-plugins-conformance-write-test', error: null,
+          cleanupError: { code: 'EBUSY', message: 'resource busy' },
+        },
+        argv: ['default', 'arg with spaces', '', '/plugin', '/data', '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
+        env: {
+          PLUGIN_ROOT: '/plugin', PLUGIN_DATA: '/data', APC_VALUE: 'fixture value with spaces',
+          APC_EXPANSION: '/plugin|/data|/plugin', APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}',
+        },
+      },
+    }],
+  });
+  await writeFile(filename, JSON.stringify(value));
+
+  const output = run(filename);
+  assert.equal(output.status, 0, output.stderr);
+  assert.equal(output.stderr, '');
+  assert.equal(output.stdout.trimEnd(), formatReport(value));
+  assert.match(output.stdout, /\nWarnings\n/);
+  assert.match(output.stdout, /Plugin data writability \(mcp\.stdio\.data\.writable\)/);
+  assert.match(output.stdout, /EBUSY/);
+  assert.match(output.stdout, /resource busy/);
 });
 
 test('malformed saved reports fail instead of printing misleading partial summaries', async (t) => {
@@ -71,7 +104,7 @@ test('malformed saved reports fail instead of printing misleading partial summar
     (value) => { value.results[0].detail = null; },
     (value) => { value.results[0].specSections = '9'; },
     (value) => { value.summary.not_verified = 0; },
-    (value) => { value.summary.total = 15; },
+    (value) => { value.summary.total = 16; },
     (value) => { value.summary.pass = '0'; },
     (value) => { value.notes = [null]; },
   ];

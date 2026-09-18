@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -53,18 +53,47 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
     const client = await connect(files, mode);
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(({ name }) => name), ['observe']);
+    assert.equal(tools[0].annotations.readOnlyHint, mode !== 'default');
+    assert.equal(tools[0].annotations.idempotentHint, mode !== 'default');
     const result = await client.callTool({ name: 'observe', arguments: {} });
     assert.ok(!result.isError);
     const observation = JSON.parse(result.content[0].text);
     assert.deepEqual(result.structuredContent, observation);
     assert.equal(observation.evidence.root, files.root);
     assert.equal(observation.evidence.env.APC_SHOULD_NOT_LEAK, undefined);
+    if (mode === 'default') {
+      assert.equal(dirname(observation.evidence.dataWrite.path), files.data);
+      assert.equal(observation.evidence.dataWrite.error, null);
+      assert.equal(observation.evidence.dataWrite.cleanupError, null);
+      await assert.rejects(access(observation.evidence.dataWrite.path), { code: 'ENOENT' });
+      assert.equal(await readFile(join(files.data, 'README.md'), 'utf8'),
+        'This bundled directory is the expected working directory for the `relative` and `root` MCP probes.\n');
+
+      await rm(files.data, { recursive: true });
+      const unavailable = (await client.callTool({ name: 'observe', arguments: {} })).structuredContent;
+      assert.equal(unavailable.evidence.dataWrite.error.operation, 'create');
+      assert.equal(unavailable.evidence.dataWrite.error.code, 'ENOENT');
+      assert.equal(unavailable.evidence.dataWrite.cleanupError, null);
+
+      await mkdir(files.data);
+      await writeFile(join(files.data, 'README.md'),
+        'This bundled directory is the expected working directory for the `relative` and `root` MCP probes.\n');
+      const restored = (await client.callTool({ name: 'observe', arguments: {} })).structuredContent;
+      assert.notEqual(restored.evidence.dataWrite.path, observation.evidence.dataWrite.path);
+      assert.equal(restored.evidence.dataWrite.error, null);
+      assert.equal(restored.evidence.dataWrite.cleanupError, null);
+      await assert.rejects(access(restored.evidence.dataWrite.path), { code: 'ENOENT' });
+    } else {
+      assert.equal(Object.hasOwn(observation.evidence, 'dataWrite'), false);
+    }
     observations.push(observation);
   }
+  assert.equal(await readFile(join(files.data, 'README.md'), 'utf8'),
+    'This bundled directory is the expected working directory for the `relative` and `root` MCP probes.\n');
   const reportInput = input(observations);
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
-  assert.equal(direct.summary.pass, 13);
+  assert.equal(direct.summary.pass, 14);
   assert.equal(direct.summary.not_verified, 1);
 });
 
@@ -77,6 +106,35 @@ test('actual process deviations are evaluated as failures, not missing evidence'
     assert.equal(report.results.find((result) => result.id === id).status, 'fail', id);
   }
   assert.equal(report.results.find((result) => result.id === 'mcp.stdio.tool-availability.cwd-omitted').status, 'pass');
+});
+
+test('packaged default probe reports skipped and failed PLUGIN_DATA writes as evidence', { timeout: 30_000 }, async (t) => {
+  const files = await fixture(t);
+  const existing = join(files.data, 'README.md');
+  const existingContents = await readFile(existing, 'utf8');
+
+  const relativeClient = await connect(files, 'default', {
+    env: { PLUGIN_ROOT: files.root, PLUGIN_DATA: 'relative/data' },
+  });
+  const relative = await relativeClient.callTool({ name: 'observe', arguments: {} });
+  assert.ok(!relative.isError);
+  assert.equal(relative.structuredContent.evidence.dataWrite, null);
+  assert.equal(buildReport(input([relative.structuredContent])).results
+    .find(({ id }) => id === 'mcp.stdio.data.writable').status, 'not_verified');
+
+  for (const data of [join(files.data, 'missing'), existing]) {
+    const client = await connect(files, 'default', {
+      env: { PLUGIN_ROOT: files.root, PLUGIN_DATA: data },
+    });
+    const result = await client.callTool({ name: 'observe', arguments: {} });
+    assert.ok(!result.isError);
+    assert.equal(result.structuredContent.evidence.dataWrite.error.operation, 'create');
+    assert.match(result.structuredContent.evidence.dataWrite.error.code, /^(ENOENT|ENOTDIR)$/);
+    assert.equal(result.structuredContent.evidence.dataWrite.cleanupError, null);
+    assert.equal(buildReport(input([result.structuredContent])).results
+      .find(({ id }) => id === 'mcp.stdio.data.writable').status, 'fail');
+  }
+  assert.equal(await readFile(existing, 'utf8'), existingContents);
 });
 
 test('MCP tool errors remain errors and do not create success observations', { timeout: 30_000 }, async (t) => {

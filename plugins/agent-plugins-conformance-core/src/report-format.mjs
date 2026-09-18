@@ -30,6 +30,7 @@ export function validateSavedReport(report) {
     const at = `report.results[${index}]`;
     object(result, at);
     for (const key of ['id', 'label', 'detail']) string(result[key], `${at}.${key}`);
+    if (Object.hasOwn(result, 'warning')) string(result.warning, `${at}.warning`);
     if (ids.has(result.id)) invalid(`${at}.id`, 'duplicate result ID');
     ids.add(result.id);
     if (!STATUSES.includes(result.status)) invalid(`${at}.status`, `expected one of: ${STATUSES.join(', ')}`);
@@ -77,6 +78,13 @@ export function formatReport(report) {
     lines.push('', heading);
     for (const { id, label, detail } of results) {
       lines.push(`  ${escapeText(label)} (${escapeText(id)})`, `    ${escapeText(detail)}`);
+    }
+  }
+  const warnings = report.results.filter((result) => result.warning !== undefined);
+  if (warnings.length) {
+    lines.push('', 'Warnings');
+    for (const { id, label, warning } of warnings) {
+      lines.push(`  ${escapeText(label)} (${escapeText(id)})`, `    ${escapeText(warning)}`);
     }
   }
   return lines.join('\n');

@@ -7186,12 +7186,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs, exportName) {
+    function addFormats(ajv, list, fs2, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs[f]);
+        ajv.addFormat(f, fs2[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7202,7 +7202,7 @@ var require_dist = __commonJS({
 // plugins/agent-plugins-conformance-core/src/probe.mjs
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { isAbsolute } from "node:path";
+import { isAbsolute as isAbsolute2 } from "node:path";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
 var util_exports = {};
@@ -16928,6 +16928,43 @@ var StdioServerTransport = class {
   }
 };
 
+// plugins/agent-plugins-conformance-core/src/data-write.mjs
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { isAbsolute, join } from "node:path";
+var errorFacts = (error2) => ({ code: error2.code ?? null, message: error2.message });
+function observeDataWrite(data) {
+  if (!data || !isAbsolute(data)) return null;
+  const observation = {
+    path: join(data, `.agent-plugins-conformance-${randomUUID()}.tmp`),
+    error: null,
+    cleanupError: null
+  };
+  let descriptor;
+  let operation = "create";
+  try {
+    descriptor = fs.openSync(observation.path, "wx");
+    operation = "write";
+    fs.writeFileSync(descriptor, "Agent Plugins conformance write probe\n");
+  } catch (error2) {
+    observation.error = { operation, ...errorFacts(error2) };
+  } finally {
+    if (descriptor !== void 0) {
+      try {
+        fs.closeSync(descriptor);
+      } catch (error2) {
+        observation.error ??= { operation: "close", ...errorFacts(error2) };
+      }
+      try {
+        fs.unlinkSync(observation.path);
+      } catch (error2) {
+        observation.cleanupError = errorFacts(error2);
+      }
+    }
+  }
+  return observation;
+}
+
 // plugins/agent-plugins-conformance-core/src/probe.mjs
 var serverName = process.argv[2];
 if (!["default", "relative", "root", "data"].includes(serverName)) {
@@ -16936,7 +16973,7 @@ if (!["default", "relative", "root", "data"].includes(serverName)) {
 var root = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
 var environmentNames = ["PLUGIN_ROOT", "PLUGIN_DATA", "APC_VALUE", "APC_EXPANSION", "APC_LITERAL"];
 var resolvedData = null;
-if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
+if (process.env.PLUGIN_DATA && isAbsolute2(process.env.PLUGIN_DATA)) {
   try {
     resolvedData = realpathSync(process.env.PLUGIN_DATA);
   } catch {
@@ -16957,9 +16994,9 @@ var server = new Server(
 );
 var observeTool = {
   name: "observe",
-  description: "Return this process launch evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper. Reads only fixture variables.",
+  description: "Return this process launch evidence, including only fixture environment variables." + (serverName === "default" ? " Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error." : "") + " Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+  annotations: { readOnlyHint: serverName !== "default", destructiveHint: false, idempotentHint: serverName !== "default", openWorldHint: false }
 };
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [observeTool] }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
@@ -16970,6 +17007,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
         throw new Error("observe requires an empty object");
       }
       const observation = { kind: "mcp-stdio", server: serverName, evidence: { version: 1, ...launch } };
+      if (serverName === "default") observation.evidence.dataWrite = observeDataWrite(process.env.PLUGIN_DATA);
       return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
     }
     throw new Error(`Unknown tool: ${params.name}`);
