@@ -23,11 +23,12 @@ test('plugin and MCP target the same published specification version', async () 
   assert.equal((await load('mcp')).$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
 });
 
-test('primary run skill is separate from the two core discovery witnesses', async () => {
+test('primary run skill is separate from the core discovery fixture layout', async () => {
   const primary = new URL('../plugins/agent-plugins-conformance/', import.meta.url);
   const core = new URL('../plugins/agent-plugins-conformance-core/', import.meta.url);
   assert.deepEqual((await readdir(new URL('skills/', primary))).sort(), ['run-conformance']);
-  assert.deepEqual((await readdir(new URL('skills/', core))).sort(), ['conformance-alpha', 'conformance-beta']);
+  const skills = new URL('skills/', core);
+  assert.deepEqual((await readdir(skills)).sort(), ['conformance-alpha', 'conformance-beta', 'without-skill']);
   const runSkill = await readFile(new URL('skills/run-conformance/SKILL.md', primary), 'utf8');
   assert.match(runSkill, /^name: run-conformance$/m);
   for (const name of ['alpha', 'beta']) {
@@ -35,6 +36,10 @@ test('primary run skill is separate from the two core discovery witnesses', asyn
     assert.match(witness, new RegExp(`^name: conformance-${name}$`, 'm'));
     assert.ok(witness.includes(`APC_${name.toUpperCase()}_V1`));
   }
+  assert.deepEqual((await readdir(new URL('without-skill/', skills))).sort(), ['README.md']);
+  const nested = await readFile(new URL('conformance-alpha/references/conformance-nested/SKILL.md', skills), 'utf8');
+  assert.match(nested, /^name: conformance-nested$/m);
+  assert.match(nested, /^description: .+$/m);
 });
 
 test('recovery fixture contains exactly the intended invalid manifest and MCP fields', async () => {
