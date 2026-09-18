@@ -22,6 +22,12 @@ const mcp = () => ({
     },
   },
 });
+const recoverySkill = (marker = 'APC_RECOVERY_VALID_V1') => ({
+  kind: 'skill', skill: 'conformance-recovery-valid', marker,
+});
+const recoveryMcp = () => ({
+  kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid' },
+});
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 
 async function fixture(t) {
@@ -80,6 +86,27 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.plugin-root').status, 'fail');
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.expansion').status, 'not_verified');
   assert.deepEqual(await readdir(join(f.directory, 'nested directory')), ['report with spaces.json']);
+});
+
+test('recovery observations have distinct recorder keys and repeated keys replace canonically', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  f.record(mcp());
+  f.record(recoveryMcp());
+  f.record(recoverySkill());
+  let report = await f.read();
+  assert.deepEqual(report.observations, [recoverySkill(), mcp(), recoveryMcp()]);
+  assert.equal(report.results.find(({ id }) => id === 'skills.recovery.valid-skill-available').status, 'pass');
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
+
+  f.record(recoverySkill('incorrect marker'));
+  report = await f.read();
+  assert.equal(report.observations.length, 3);
+  assert.deepEqual(report.observations.find(({ skill }) => skill === 'conformance-recovery-valid'),
+    recoverySkill('incorrect marker'));
+  assert.deepEqual(report.observations.find(({ server }) => server === 'default'), mcp());
+  assert.deepEqual(report.observations.find(({ server }) => server === 'recovery-valid'), recoveryMcp());
+  assert.equal(report.results.find(({ id }) => id === 'skills.recovery.valid-skill-available').status, 'fail');
 });
 
 test('record preserves a cleanup warning while keeping successful writability passing', async (t) => {

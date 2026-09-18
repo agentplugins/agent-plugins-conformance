@@ -17,6 +17,8 @@ export const CASES = Object.freeze([
   ['mcp.stdio.env.configured-value', 'Configured environment', ['9.1']],
   ['mcp.stdio.args.preservation-and-expansion', 'Argument preservation and expansion', ['7.2.1', '9.2']],
   ['mcp.stdio.env.expansion', 'Environment expansion', ['9.2']],
+  ['skills.recovery.valid-skill-available', 'Valid skill availability with recoverable invalid configuration', ['5.2', '7.1', '7.2.2', '8.1']],
+  ['mcp.stdio.recovery.valid-server-available', 'Valid MCP server availability with recoverable invalid configuration', ['5.2', '7.1', '7.2.2', '8.1']],
 ].map(([id, label, specSections]) => Object.freeze({
   id, label, specSections: Object.freeze(specSections),
 })));

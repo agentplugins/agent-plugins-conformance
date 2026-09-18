@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -94,7 +94,38 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 14);
-  assert.equal(direct.summary.not_verified, 1);
+  assert.equal(direct.summary.not_verified, 3);
+});
+
+test('copied recovery plugin serves its exact observation without runtime dependencies', { timeout: 30_000 }, async (t) => {
+  const parent = await mkdtemp(join(tmpdir(), 'agent-plugins-conformance-recovery-'));
+  const root = join(parent, 'copied recovery plugin');
+  await cp(new URL('../plugins/agent-plugins-conformance-recovery', import.meta.url), root, { recursive: true });
+  const client = new Client({ name: 'conformance-recovery-reference-test', version: '1' });
+  t.after(async () => {
+    try { await client.close(); } finally { await rm(parent, { recursive: true, force: true }); }
+  });
+  assert.equal((await readdir(root)).includes('node_modules'), false);
+  const config = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers['recovery-valid'];
+  const transport = new StdioClientTransport({
+    command: process.execPath,
+    args: config.args.map((argument) => argument.replaceAll('${PLUGIN_ROOT}', root)),
+    cwd: root,
+    env: { PLUGIN_ROOT: root, PLUGIN_DATA: join(parent, 'data') },
+    stderr: 'pipe',
+  });
+  await client.connect(transport);
+  const { tools } = await client.listTools();
+  assert.deepEqual(tools.map(({ name }) => name), ['observe']);
+  const response = await client.callTool({ name: 'observe', arguments: {} });
+  const observation = {
+    kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid' },
+  };
+  assert.equal(response.isError, undefined);
+  assert.deepEqual(response.structuredContent, observation);
+  assert.deepEqual(JSON.parse(response.content[0].text), observation);
+  assert.equal(buildReport(input([observation])).results
+    .find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 });
 
 test('actual process deviations are evaluated as failures, not missing evidence', { timeout: 30_000 }, async (t) => {

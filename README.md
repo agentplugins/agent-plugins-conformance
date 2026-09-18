@@ -4,12 +4,13 @@ Plugins for collecting evidence about client support for [Agent Plugins](https:/
 
 ## Run the checks
 
-Install both plugins through the client's Agent Plugins support:
+Install all three plugins through the client's Agent Plugins support:
 
 | Plugin directory | Purpose |
 | --- | --- |
 | [`plugins/agent-plugins-conformance`](plugins/agent-plugins-conformance/) | The `run-conformance` skill and JSON reporting tools |
 | [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery and stdio MCP behavior |
+| [`plugins/agent-plugins-conformance-recovery`](plugins/agent-plugins-conformance-recovery/) | Fixtures for valid skill and MCP availability alongside invalid configuration |
 
 Node.js 22 or newer must be available as `node` on the client's executable search path, and the agent must be able to execute commands. The packaged plugins require no build or dependency installation. Each directory above is an installable plugin; the repository root is the development project.
 
@@ -17,7 +18,7 @@ Then ask the agent:
 
 > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
-The [Agent Plugins Conformance instructions](plugins/agent-plugins-conformance/README.md) explain collection, JSON results, acceptance queries, and the optional summary command for saved reports. The [Core fixture documentation](plugins/agent-plugins-conformance-core/README.md) describes the covered cases and their limits.
+The [Agent Plugins Conformance instructions](plugins/agent-plugins-conformance/README.md) explain collection, JSON results, acceptance queries, and the optional summary command for saved reports. The [Core fixture documentation](plugins/agent-plugins-conformance-core/README.md) and [Recovery fixture documentation](plugins/agent-plugins-conformance-recovery/README.md) describe the covered cases and their limits.
 
 ## Development
 

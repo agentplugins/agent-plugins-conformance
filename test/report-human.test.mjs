@@ -25,15 +25,23 @@ function input() {
   };
 }
 
-test('all-pass human report contains a compact check table and no empty sections', () => {
-  const human = formatReport(buildReport(input()));
+function addRecovery(value) {
+  value.observations.push(
+    { kind: 'skill', skill: 'conformance-recovery-valid', marker: 'APC_RECOVERY_VALID_V1' },
+    { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid' } },
+  );
+  return value;
+}
+
+test('combined all-pass human report groups recovery checks with skills and MCP', () => {
+  const human = formatReport(buildReport(addRecovery(input())));
   assert.equal(human, [
     'Agent Plugins conformance — spec 1.0.0',
     '',
     'Checks       Passed  Failed  Not verified',
-    'Skills            1       0             0',
-    'MCP              14       0             0',
-    'Total            15       0             0',
+    'Skills            2       0             0',
+    'MCP              15       0             0',
+    'Total            17       0             0',
   ].join('\n'));
 });
 
@@ -41,8 +49,8 @@ test('all-unverified human report preserves every saved missing-evidence result'
   const value = input();
   value.observations = [];
   const human = formatReport(buildReport(value));
-  assert.match(human, /Skills\s+0\s+0\s+1/);
-  assert.match(human, /MCP\s+0\s+0\s+14/);
+  assert.match(human, /Skills\s+0\s+0\s+2/);
+  assert.match(human, /MCP\s+0\s+0\s+15/);
   assert.match(human, /Missing skill observations: conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
   assert.doesNotMatch(human, /not_verified|\nFailed\n/);
@@ -53,7 +61,7 @@ test('mixed human report puts failures before missing-evidence details', () => {
   value.observations = [value.observations[2]];
   value.observations[0].evidence.env.APC_VALUE = 'incorrect configured value';
   const human = formatReport(buildReport(value));
-  assert.match(human, /MCP\s+7\s+1\s+6/);
+  assert.match(human, /MCP\s+7\s+1\s+7/);
   assert.match(human, /Configured environment \(mcp.stdio.env.configured-value\)/);
   assert.match(human, /"fixture value with spaces"/);
   assert.match(human, /"incorrect configured value"/);
@@ -108,7 +116,7 @@ test('human report renders saved warnings independently of result status', () =>
   const writable = value.results.find(({ id }) => id === 'mcp.stdio.data.writable');
   writable.status = 'not_verified';
   writable.warning = 'Saved cleanup warning for /state/plugin/leftover.';
-  value.summary = { pass: 14, fail: 0, not_verified: 1, total: 15 };
+  value.summary = { pass: 14, fail: 0, not_verified: 3, total: 17 };
   value.observations = [];
 
   const human = formatReport(value);
@@ -130,6 +138,8 @@ test('failed skill discovery shows incorrect and missing skills together regardl
     assert.match(failed, /Immediate child skill discovery \(skills.discovery.immediate-children\)/);
     assert.match(failed, /conformance-alpha: expected "APC_ALPHA_V1"; observed "incorrect alpha"/);
     assert.match(failed, /Missing skill observations: conformance-beta\./);
-    if (includeMcp) assert.doesNotMatch(human, /\nNot verified\n/);
+    assert.match(human, /\nNot verified\n/);
+    assert.match(human, /\(skills\.recovery\.valid-skill-available\)/);
+    assert.match(human, /\(mcp\.stdio\.recovery\.valid-server-available\)/);
   }
 });

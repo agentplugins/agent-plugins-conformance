@@ -2,11 +2,13 @@ import path from 'node:path';
 import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
-const SERVERS = Object.keys(MCP_CWD_VARIANTS);
-const SKILLS = {
+const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
+const SERVERS = [...CORE_SERVERS, 'recovery-valid'];
+const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
 };
+const SKILLS = { ...CORE_SKILLS, 'conformance-recovery-valid': 'APC_RECOVERY_VALID_V1' };
 const ENV_KEYS = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
 
 function invalid(at, reason) {
@@ -70,11 +72,16 @@ function validate(input) {
       if (runtime.has(observation.server)) invalid(at, `duplicate mcp-stdio observation: ${observation.server}`);
       const evidenceAt = `${at}.evidence`;
       const evidence = observation.evidence;
-      const keys = ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
+      const keys = observation.server === 'recovery-valid'
+        ? ['version', 'server'] : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
+      if (observation.server === 'recovery-valid') {
+        runtime.set(observation.server, evidence);
+        continue;
+      }
       for (const field of ['root', 'cwd']) {
         string(evidence[field], `${evidenceAt}.${field}`);
         if (!pathFlavor(evidence[field])) invalid(`${evidenceAt}.${field}`, 'expected an absolute POSIX or Windows path');
@@ -122,15 +129,16 @@ export function buildReport(input) {
   const mismatch = (field, expected, observed) =>
     `${field}: expected ${JSON.stringify(expected)}; observed ${observed === undefined ? 'missing' : JSON.stringify(observed)}.`;
 
-  const missingSkills = Object.keys(SKILLS).filter((skill) => !skills.has(skill));
-  const wrongSkills = Object.entries(SKILLS)
+  const missingSkills = Object.keys(CORE_SKILLS).filter((skill) => !skills.has(skill));
+  const wrongSkills = Object.entries(CORE_SKILLS)
     .filter(([skill, marker]) => skills.has(skill) && skills.get(skill) !== marker)
     .map(([skill, marker]) => mismatch(`Skill marker for ${skill}`, marker, skills.get(skill)));
   const skillDetails = [...wrongSkills];
   if (missingSkills.length) skillDetails.push(`Missing skill observations: ${missingSkills.join(', ')}.`);
   set('skills.discovery.immediate-children', wrongSkills.length ? 'fail' : missingSkills.length ? 'not_verified' : 'pass',
     skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for both immediate child skills.');
-  for (const [server, evidence] of runtime) {
+  for (const server of CORE_SERVERS.filter((server) => runtime.has(server))) {
+    const evidence = runtime.get(server);
     set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server.');
     const flavor = pathFlavor(evidence.root);
     const target = server === 'default' ? evidence.root
@@ -142,6 +150,14 @@ export function buildReport(input) {
       check(`mcp.stdio.cwd.${MCP_CWD_VARIANTS[server]}`, samePath(evidence.cwd, target, flavor),
         'Working directory matches the resolved expected path.', mismatch('Working directory', target, evidence.cwd));
     }
+  }
+  if (skills.has('conformance-recovery-valid')) {
+    check('skills.recovery.valid-skill-available', skills.get('conformance-recovery-valid') === SKILLS['conformance-recovery-valid'],
+      'Agent reported the expected client-loaded marker for the valid recovery skill.',
+      mismatch('Skill marker for conformance-recovery-valid', SKILLS['conformance-recovery-valid'], skills.get('conformance-recovery-valid')));
+  }
+  if (runtime.has('recovery-valid')) {
+    set('mcp.stdio.recovery.valid-server-available', 'pass', 'Valid runtime evidence supplied for the recovery server.');
   }
   const evidence = runtime.get('default');
   if (evidence) {
@@ -201,6 +217,9 @@ export function buildReport(input) {
       })),
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
+        if (server === 'recovery-valid') {
+          return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server } };
+        }
         return { kind: 'mcp-stdio', server, evidence: {
           version: evidence.version, server: evidence.server,
           root: evidence.root, cwd: evidence.cwd, resolvedData: evidence.resolvedData, argv: [...evidence.argv],
