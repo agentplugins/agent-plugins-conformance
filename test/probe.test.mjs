@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 4);
+  assert.equal(direct.summary.not_verified, 5);
 });
 
 test('copied recovery plugin serves its exact observation without runtime dependencies', { timeout: 30_000 }, async (t) => {

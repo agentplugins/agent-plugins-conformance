@@ -6,6 +6,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 for (const [plugin, file] of [
   ['agent-plugins-conformance', 'plugin'],
   ['agent-plugins-conformance-core', 'plugin'],
+  ['agent-plugins-conformance-invalid-mcp', 'plugin'],
   ['agent-plugins-conformance-core', 'mcp'],
 ]) {
   test(`${plugin}/${file}.json conforms to the pinned Agent Plugins 1.0.0 schema`, async () => {
@@ -88,4 +89,17 @@ test('recovery fixture has one valid skill witness and one skill missing only de
   // The Agent Skills specification requires `description` in frontmatter:
   // https://agentskills.io/specification
   assert.doesNotMatch(invalid.split('---', 3)[1], /^description:/m);
+});
+
+test('malformed MCP fixture has a syntactically invalid document and one valid skill witness', async () => {
+  const root = new URL('../plugins/agent-plugins-conformance-invalid-mcp/', import.meta.url);
+  const mcp = await readFile(new URL('mcp.json', root), 'utf8');
+  assert.throws(() => JSON.parse(mcp), SyntaxError);
+  assert.deepEqual(await readdir(new URL('skills/', root)), ['conformance-invalid-mcp-valid']);
+  const skill = await readFile(new URL('skills/conformance-invalid-mcp-valid/SKILL.md', root), 'utf8');
+  assert.match(skill, /^---\nname: conformance-invalid-mcp-valid\ndescription: .+\n---\n/);
+  assert.match(skill, /APC_INVALID_MCP_VALID_V1/);
+  for (const file of ['LICENSE.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/CC-BY-4.0.txt']) {
+    assert.equal(await readFile(new URL(file, root), 'utf8'), await readFile(new URL(`../${file}`, import.meta.url), 'utf8'));
+  }
 });

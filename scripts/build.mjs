@@ -37,7 +37,7 @@ for (const plugin of ['agent-plugins-conformance-core', 'agent-plugins-conforman
 }
 
 // Keep each installable plugin's license notices with its runtime and docs.
-for (const plugin of ['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery']) {
+for (const plugin of ['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery', 'agent-plugins-conformance-invalid-mcp']) {
   await mkdir(`plugins/${plugin}/LICENSES`, { recursive: true });
   for (const file of ['LICENSE.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/CC-BY-4.0.txt']) {
     await copyFile(file, `plugins/${plugin}/${file}`);
