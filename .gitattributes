@@ -1,0 +1,8 @@
+* text=auto eol=lf
+plugins/agent-plugins-conformance-core/dist/probe.mjs linguist-generated=true
+plugins/agent-plugins-conformance-core/THIRD_PARTY_NOTICES.md linguist-generated=true
+plugins/agent-plugins-conformance-core/LICENSE.md linguist-generated=true
+plugins/agent-plugins-conformance-core/LICENSES/*.txt linguist-generated=true
+test/schemas/LICENSE.txt linguist-vendored=true linguist-generated=true
+test/schemas/mcp.schema.json linguist-vendored=true linguist-generated=true
+test/schemas/plugin.schema.json linguist-vendored=true linguist-generated=true
