@@ -1,6 +1,6 @@
 ---
 name: conformance-beta
-description: Supply the beta skill-discovery observation during an Agent Plugins conformance probe run. Use when the conformance guide requests this skill.
+description: Supply the beta skill-discovery observation during an Agent Plugins conformance probe run. Use when the run-conformance skill requests this skill.
 ---
 
 # Beta discovery probe

@@ -5,11 +5,11 @@ import os from 'node:os';
 import { mkdtemp, writeFile, readFile, readdir, cp, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
-import { formatReport } from '../plugins/agent-plugins-conformance-core/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
+import { formatReport } from '../plugins/agent-plugins-conformance/src/report-format.mjs';
 
-const plugin = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core', import.meta.url));
-const script = path.join(plugin, 'skills/conformance-guide/scripts/summarize.mjs');
+const plugin = fileURLToPath(new URL('../plugins/agent-plugins-conformance', import.meta.url));
+const script = path.join(plugin, 'skills/run-conformance/scripts/summarize.mjs');
 const report = () => buildReport({ schemaVersion: 1, observations: [] });
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
 
@@ -151,10 +151,10 @@ test('copied plugin runs from an unrelated working directory with no dependencie
   t.after(() => rm(directory, { recursive: true, force: true }));
   const copied = path.join(directory, 'installed plugin');
   await cp(path.join(plugin, 'src/report-format.mjs'), path.join(copied, 'src/report-format.mjs'), { recursive: true });
-  await cp(script, path.join(copied, 'skills/conformance-guide/scripts/summarize.mjs'), { recursive: true });
+  await cp(script, path.join(copied, 'skills/run-conformance/scripts/summarize.mjs'), { recursive: true });
   const filename = path.join(directory, 'report.json');
   await writeFile(filename, JSON.stringify(report()));
-  const output = spawnSync(process.execPath, [path.join(copied, 'skills/conformance-guide/scripts/summarize.mjs'), filename], {
+  const output = spawnSync(process.execPath, [path.join(copied, 'skills/run-conformance/scripts/summarize.mjs'), filename], {
     cwd: os.tmpdir(), encoding: 'utf8',
   });
   assert.equal(output.status, 0, output.stderr);

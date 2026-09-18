@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
-import { formatReport } from '../plugins/agent-plugins-conformance-core/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
+import { formatReport } from '../plugins/agent-plugins-conformance/src/report-format.mjs';
 
 function input() {
   const root = '/fixture/plugin';
@@ -9,7 +9,7 @@ function input() {
   return {
     schemaVersion: 1,
     observations: [
-      ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
+      ...['alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
         kind: 'mcp-stdio', server,
         evidence: {
@@ -43,14 +43,14 @@ test('all-unverified human report preserves every saved missing-evidence result'
   const human = formatReport(buildReport(value));
   assert.match(human, /Skills\s+0\s+0\s+1/);
   assert.match(human, /MCP\s+0\s+0\s+14/);
-  assert.match(human, /Missing skill observations: conformance-guide, conformance-alpha, conformance-beta\./);
+  assert.match(human, /Missing skill observations: conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
   assert.doesNotMatch(human, /not_verified|\nFailed\n/);
 });
 
 test('mixed human report puts failures before missing-evidence details', () => {
   const value = input();
-  value.observations = [value.observations[3]];
+  value.observations = [value.observations[2]];
   value.observations[0].evidence.env.APC_VALUE = 'incorrect configured value';
   const human = formatReport(buildReport(value));
   assert.match(human, /MCP\s+7\s+1\s+6/);
@@ -63,9 +63,9 @@ test('mixed human report puts failures before missing-evidence details', () => {
 
 test('unverified checks with supplied observations keep their individual reasons', () => {
   const value = input();
-  delete value.observations[3].evidence.env.PLUGIN_DATA;
-  value.observations[3].evidence.dataWrite = null;
-  value.observations[6].evidence.resolvedData = null;
+  delete value.observations[2].evidence.env.PLUGIN_DATA;
+  value.observations[2].evidence.dataWrite = null;
+  value.observations[5].evidence.resolvedData = null;
   const human = formatReport(buildReport(value));
   assert.match(human, /Argument preservation and expansion \(mcp.stdio.args.preservation-and-expansion\)/);
   assert.match(human, /Environment expansion \(mcp.stdio.env.expansion\)/);
@@ -76,7 +76,7 @@ test('unverified checks with supplied observations keep their individual reasons
 
 test('human diagnostic values cannot inject terminal controls or fake lines', () => {
   const value = input();
-  value.observations[3].evidence.env.APC_VALUE = 'wrong\nFAKE PASS\x1b[2J\x85';
+  value.observations[2].evidence.env.APC_VALUE = 'wrong\nFAKE PASS\x1b[2J\x85';
   const human = formatReport(buildReport(value));
   assert.match(human, /wrong\\nFAKE PASS\\u001b\[2J\\u0085/);
   assert.doesNotMatch(human, /[\x00-\x09\x0b-\x1f\x7f-\x9f]/);
@@ -88,9 +88,9 @@ test('partial runtime coverage never hides reasons from servers with supplied ob
   const servers = ['default', 'relative', 'root', 'data'];
   for (let included = 0; included < 16; included += 1) {
     const value = input();
-    delete value.observations[3].evidence.env.PLUGIN_DATA;
-    value.observations[3].evidence.dataWrite = null;
-    value.observations[6].evidence.resolvedData = null;
+    delete value.observations[2].evidence.env.PLUGIN_DATA;
+    value.observations[2].evidence.dataWrite = null;
+    value.observations[5].evidence.resolvedData = null;
     value.observations = value.observations.filter(({ kind, server }) =>
       kind === 'skill' || (included & (1 << servers.indexOf(server))));
     const report = buildReport(value);
@@ -122,14 +122,14 @@ test('human report renders saved warnings independently of result status', () =>
 test('failed skill discovery shows incorrect and missing skills together regardless of MCP coverage', () => {
   for (const includeMcp of [false, true]) {
     const value = input();
-    value.observations[0].marker = 'incorrect guide';
+    value.observations[0].marker = 'incorrect alpha';
     value.observations.splice(1, 1);
     if (!includeMcp) value.observations = value.observations.filter(({ kind }) => kind === 'skill');
     const human = formatReport(buildReport(value));
     const failed = human.split('\nFailed\n')[1].split('\nNot verified\n')[0];
     assert.match(failed, /Immediate child skill discovery \(skills.discovery.immediate-children\)/);
-    assert.match(failed, /conformance-guide: expected "APC_GUIDE_V1"; observed "incorrect guide"/);
-    assert.match(failed, /Missing skill observations: conformance-alpha\./);
+    assert.match(failed, /conformance-alpha: expected "APC_ALPHA_V1"; observed "incorrect alpha"/);
+    assert.match(failed, /Missing skill observations: conformance-beta\./);
     if (includeMcp) assert.doesNotMatch(human, /\nNot verified\n/);
   }
 });

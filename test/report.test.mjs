@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
+import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance/src/report.mjs';
 
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   return {
     schemaVersion: 1,
     observations: [
-      ...['guide', 'alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
+      ...['alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
       ...['default', 'relative', 'root', 'data'].map((server) => ({
         kind: 'mcp-stdio', server,
         evidence: {
@@ -36,8 +36,8 @@ test('complete valid evidence passes every case and preserves canonical evidence
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
   runtime(value).dataWrite.cleanupError = { code: 'LATE', message: 'after report' };
-  assert.equal(report.observations[3].evidence.argv.length, 8);
-  assert.equal(report.observations[3].evidence.dataWrite.cleanupError, null);
+  assert.equal(report.observations[2].evidence.argv.length, 8);
+  assert.equal(report.observations[2].evidence.dataWrite.cleanupError, null);
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -129,8 +129,8 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
   assert.equal(report.summary.pass, 15);
-  assert.equal(report.observations[6].evidence.resolvedData, '/private/tmp/data');
-  assert.equal(report.observations[3].evidence.env.PLUGIN_DATA, '/tmp/data');
+  assert.equal(report.observations[5].evidence.resolvedData, '/private/tmp/data');
+  assert.equal(report.observations[2].evidence.env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
   assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'not_verified');
   assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, 'pass');
@@ -194,11 +194,11 @@ test('data environment must be absolute under the producing operating system pat
 test('unknown keys, duplicate observations, identities, versions and types are rejected', () => {
   const invalid = [
     [(v) => { v.status = 'pass'; }, /input.status: unknown field/],
-    [(v) => { v.observations[4] = v.observations[3]; }, /duplicate mcp-stdio/],
+    [(v) => { v.observations[3] = v.observations[2]; }, /duplicate mcp-stdio/],
     [(v) => { v.observations[1] = v.observations[0]; }, /duplicate skill/],
     [(v) => { runtime(v).env.SECRET = 'not allowed'; }, /unknown field/],
     [(v) => { runtime(v).server = 'other'; }, /must match observation.server/],
-    [(v) => { v.observations[3].server = 'other'; }, /expected one of/],
+    [(v) => { v.observations[2].server = 'other'; }, /expected one of/],
     [(v) => { runtime(v).version = 2; }, /expected 1/],
     [(v) => { runtime(v).extra = true; }, /extra: unknown field/],
     [(v) => { runtime(v).root = 'relative'; }, /absolute/],
@@ -209,7 +209,7 @@ test('unknown keys, duplicate observations, identities, versions and types are r
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
-    [(v) => { v.observations[3].kind = 'unknown'; }, /expected one of: mcp-stdio, skill/],
+    [(v) => { v.observations[2].kind = 'unknown'; }, /expected one of: mcp-stdio, skill/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
 });
@@ -229,34 +229,34 @@ test('failure diagnostics preserve value boundaries and escape control character
 });
 
 test('skill discovery aggregate requires all immediate child skills and preserves partial observations', () => {
-  for (let included = 0; included < 8; included += 1) {
+  for (let included = 0; included < 4; included += 1) {
     const value = input();
     value.observations = value.observations.filter(({ kind }, index) =>
       kind !== 'skill' || (included & (1 << index)));
     const report = buildReport(value);
     const discovery = result(report, 'skills.discovery.immediate-children');
-    assert.equal(discovery.status, included === 7 ? 'pass' : 'not_verified');
+    assert.equal(discovery.status, included === 3 ? 'pass' : 'not_verified');
     assert.deepEqual(report.observations, value.observations);
-    for (const [index, skill] of ['guide', 'alpha', 'beta'].entries()) {
+    for (const [index, skill] of ['alpha', 'beta'].entries()) {
       if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
     }
     assert.equal(report.summary.total, 15);
     assert.equal(report.summary.fail, 0);
-    assert.equal(report.summary.not_verified, included === 7 ? 0 : 1);
+    assert.equal(report.summary.not_verified, included === 3 ? 0 : 1);
   }
 });
 
 test('incorrect skill markers fail the aggregate even when another skill is missing', () => {
   for (const missing of [false, true]) {
     const value = input();
-    value.observations[0].marker = 'wrong guide';
-    value.observations[1].marker = 'wrong alpha';
-    if (missing) value.observations.splice(2, 1);
+    value.observations[0].marker = 'wrong alpha';
+    value.observations[1].marker = 'wrong beta';
+    if (missing) value.observations.splice(1, 1);
     const report = buildReport(value);
     const discovery = result(report, 'skills.discovery.immediate-children');
     assert.equal(discovery.status, 'fail');
-    assert.match(discovery.detail, /conformance-guide: expected "APC_GUIDE_V1"; observed "wrong guide"/);
     assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
+    if (!missing) assert.match(discovery.detail, /conformance-beta: expected "APC_BETA_V1"; observed "wrong beta"/);
     assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
     assert.deepEqual(report.summary, { pass: 14, fail: 1, not_verified: 0, total: 15 });
     value.observations.reverse();

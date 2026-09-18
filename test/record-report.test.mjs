@@ -5,9 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
+import { formatReport } from '../plugins/agent-plugins-conformance/src/report-format.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
 
-const script = fileURLToPath(new URL('../plugins/agent-plugins-conformance-core/skills/conformance-guide/scripts/report.mjs', import.meta.url));
+const script = fileURLToPath(new URL('../plugins/agent-plugins-conformance/skills/run-conformance/scripts/report.mjs', import.meta.url));
 const start = { action: 'start' };
 const skill = (name = 'alpha', marker = `APC_${name.toUpperCase()}_V1`) => ({ kind: 'skill', skill: `conformance-${name}`, marker });
 const mcp = () => ({
@@ -164,13 +165,21 @@ test('write errors report failure and remove sibling temporary files', async (t)
   assert.equal(await readFile(blocker, 'utf8'), 'keep');
 });
 
-test('complete copied plugin reports without runtime dependencies from unrelated cwd', async (t) => {
+test('copied primary plugin records and summarizes without sibling plugins or runtime dependencies', async (t) => {
   const f = await fixture(t);
   const copiedPlugin = join(f.directory, 'copied plugin');
-  await cp(new URL('../plugins/agent-plugins-conformance-core', import.meta.url), copiedPlugin, { recursive: true });
+  await cp(new URL('../plugins/agent-plugins-conformance', import.meta.url), copiedPlugin, { recursive: true });
   assert.equal((await readdir(copiedPlugin)).includes('node_modules'), false);
-  const copiedScript = join(copiedPlugin, 'skills/conformance-guide/scripts/report.mjs');
+  const copiedScript = join(copiedPlugin, 'skills/run-conformance/scripts/report.mjs');
   f.success(start, copiedScript);
-  f.success({ action: 'record', observation: skill('guide') }, copiedScript);
-  assert.deepEqual(await f.read(), expected([skill('guide')]));
+  f.success({ action: 'record', observation: skill('alpha') }, copiedScript);
+  f.success({ action: 'record', observation: skill('beta') }, copiedScript);
+  const report = await f.read();
+  assert.deepEqual(report, expected([skill('alpha'), skill('beta')]));
+  assert.equal(report.results.find(({ id }) => id === 'skills.discovery.immediate-children').status, 'pass');
+  const summary = spawnSync(process.execPath, [join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'), f.outputPath], {
+    cwd: f.directory, encoding: 'utf8', timeout: 10_000,
+  });
+  assert.equal(summary.status, 0, summary.stderr);
+  assert.equal(summary.stdout.trimEnd(), formatReport(report));
 });

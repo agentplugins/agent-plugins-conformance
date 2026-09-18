@@ -1,20 +1,23 @@
 # Agent Plugins conformance suite
 
-Plugins for collecting evidence about client support for [Agent Plugins](https://agent-plugins.org/). Each plugin contains its own fixtures and reporting instructions. Results describe the observed run and covered cases; they are not whole-client certification.
+Plugins for collecting evidence about client support for [Agent Plugins](https://agent-plugins.org/). Results describe the observed run and covered cases; they are not whole-client certification.
 
-## Plugins
+## Run the checks
 
-| Plugin | Coverage |
+Install both plugins through the client's Agent Plugins support:
+
+| Plugin directory | Purpose |
 | --- | --- |
-| [Agent Plugins Conformance — Core](plugins/agent-plugins-conformance-core/) | Skill discovery, MCP tool availability, working directories, plugin data writability, and selected subprocess environment and placeholder rules |
+| [`plugins/agent-plugins-conformance`](plugins/agent-plugins-conformance/) | The `run-conformance` skill and JSON reporting tools |
+| [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery and stdio MCP behavior |
 
-Install **`plugins/agent-plugins-conformance-core`** through the client's Agent Plugins support. Each directory under `plugins/` is an installable plugin; the repository root is the development project.
+Node.js 22 or newer must be available as `node` on the client's executable search path, and the agent must be able to execute commands. The packaged plugins require no build or dependency installation. Each directory above is an installable plugin; the repository root is the development project.
 
-The core plugin requires Node.js 22 or newer as `node` on the client's executable search path. Its committed MCP bundle and skill-local reporting scripts run without a build or dependency installation. Ask the agent to run its `conformance-guide` skill and save the report to an absolute path:
+Then ask the agent:
 
-> Run the conformance-guide skill from Agent Plugins Conformance — Core and save the JSON report to /tmp/agent-plugins-conformance/report.json.
+> Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
-The [core plugin instructions](plugins/agent-plugins-conformance-core/README.md) explain collection, the JSON results, acceptance queries, and an optional summary command for saved reports.
+The [Agent Plugins Conformance instructions](plugins/agent-plugins-conformance/README.md) explain collection, JSON results, acceptance queries, and the optional summary command for saved reports. The [Core fixture documentation](plugins/agent-plugins-conformance-core/README.md) describes the covered cases and their limits.
 
 ## Development
 
