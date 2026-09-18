@@ -2,12 +2,12 @@
 
 Run [Agent Plugins](https://agent-plugins.org/) conformance checks through a client's normal skill and MCP mechanisms and save a JSON report. The `run-conformance` skill collects observations from installed fixture plugins; its reporter evaluates the evidence deterministically.
 
-Results describe the observed run and covered cases; they are not whole-client certification. The [Core fixture](../agent-plugins-conformance-core/) provides the current checks and explains their coverage.
+Results describe the observed run and covered cases; they are not whole-client certification. The [Core fixture](../agent-plugins-conformance-core/) provides the main skill and stdio MCP checks. The [Recovery fixture](../agent-plugins-conformance-recovery/) checks valid skill and MCP availability alongside invalid configuration.
 
 ## Run through a client
 
 1. Make Node.js 22 or newer available as `node` on the client's executable search path. The agent must also be able to execute commands. The packaged plugins require no dependency installation or build.
-2. Install this directory and [Agent Plugins Conformance — Core](../agent-plugins-conformance-core/) through the client's Agent Plugins support.
+2. Install this directory, [Agent Plugins Conformance — Core](../agent-plugins-conformance-core/), and [Agent Plugins Conformance — Recovery](../agent-plugins-conformance-recovery/) through the client's Agent Plugins support.
 3. Ask the agent to run `run-conformance` and save the JSON report to an absolute path:
 
    > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.

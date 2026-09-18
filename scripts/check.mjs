@@ -2,7 +2,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 
 for (const directory of [
-  'plugins/agent-plugins-conformance-core/src', 'plugins/agent-plugins-conformance/src',
+  'plugins/agent-plugins-conformance-core/src', 'plugins/agent-plugins-conformance-recovery/src',
+  'plugins/agent-plugins-conformance/src',
   'plugins/agent-plugins-conformance/skills/run-conformance/scripts', 'scripts', 'test',
 ]) {
   for (const name of (await readdir(directory)).filter((name) => name.endsWith('.mjs'))) {
@@ -12,8 +13,9 @@ for (const directory of [
   }
 }
 const paths = [
-  'plugins/agent-plugins-conformance-core/dist/probe.mjs', 'plugins/agent-plugins-conformance-core/THIRD_PARTY_NOTICES.md',
-  ...['agent-plugins-conformance', 'agent-plugins-conformance-core'].flatMap((plugin) =>
+  ...['agent-plugins-conformance-core', 'agent-plugins-conformance-recovery'].flatMap((plugin) =>
+    ['dist/probe.mjs', 'THIRD_PARTY_NOTICES.md'].map((file) => `plugins/${plugin}/${file}`)),
+  ...['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery'].flatMap((plugin) =>
     ['LICENSE.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/CC-BY-4.0.txt'].map((file) => `plugins/${plugin}/${file}`)),
 ];
 const before = await Promise.all(paths.map((path) => readFile(path)));

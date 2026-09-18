@@ -36,3 +36,51 @@ test('primary run skill is separate from the two core discovery witnesses', asyn
     assert.ok(witness.includes(`APC_${name.toUpperCase()}_V1`));
   }
 });
+
+test('recovery fixture contains exactly the intended invalid manifest and MCP fields', async () => {
+  const pluginSchema = JSON.parse(await readFile(new URL('schemas/plugin.schema.json', import.meta.url), 'utf8'));
+  const mcpSchema = JSON.parse(await readFile(new URL('schemas/mcp.schema.json', import.meta.url), 'utf8'));
+  const plugin = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/plugin.json', import.meta.url), 'utf8'));
+  const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
+  const validatePlugin = ajv.compile(pluginSchema);
+  const validateMcp = ajv.compile(mcpSchema);
+
+  assert.equal(plugin.conformanceUnknown, true);
+  assert.equal(plugin.extensions, false);
+  assert.equal(validatePlugin(plugin), false);
+  assert.deepEqual(validatePlugin.errors.map(({ instancePath, keyword, params }) => ({ instancePath, keyword, params })), [
+    { instancePath: '', keyword: 'additionalProperties', params: { additionalProperty: 'conformanceUnknown' } },
+    { instancePath: '/extensions', keyword: 'type', params: { type: 'object' } },
+  ]);
+  const validPlugin = { ...plugin, extensions: {} };
+  delete validPlugin.conformanceUnknown;
+  assert.equal(validatePlugin(validPlugin), true, JSON.stringify(validatePlugin.errors));
+
+  assert.deepEqual(mcp.mcpServers['recovery-invalid'], { type: 'stdio' });
+  assert.deepEqual(mcp.mcpServers['recovery-valid'], {
+    type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs'],
+  });
+  assert.equal(validateMcp(mcp), false);
+  assert.ok(validateMcp.errors.every(({ instancePath }) => instancePath.startsWith('/mcpServers/recovery-invalid')),
+    JSON.stringify(validateMcp.errors));
+  assert.ok(validateMcp.errors.some(({ keyword, params }) => keyword === 'required' && params.missingProperty === 'command'));
+  const validMcp = structuredClone(mcp);
+  delete validMcp.mcpServers['recovery-invalid'];
+  assert.equal(validateMcp(validMcp), true, JSON.stringify(validateMcp.errors));
+});
+
+test('recovery fixture has one valid skill witness and one skill missing only description', async () => {
+  const root = new URL('../plugins/agent-plugins-conformance-recovery/skills/', import.meta.url);
+  assert.deepEqual((await readdir(root)).sort(), ['conformance-recovery-invalid', 'conformance-recovery-valid']);
+  const valid = await readFile(new URL('conformance-recovery-valid/SKILL.md', root), 'utf8');
+  assert.match(valid, /^name: conformance-recovery-valid$/m);
+  assert.match(valid, /^description: .+$/m);
+  assert.match(valid, /APC_RECOVERY_VALID_V1/);
+
+  const invalid = await readFile(new URL('conformance-recovery-invalid/SKILL.md', root), 'utf8');
+  assert.match(invalid, /^---\nname: conformance-recovery-invalid\n---\n/);
+  // The Agent Skills specification requires `description` in frontmatter:
+  // https://agentskills.io/specification
+  assert.doesNotMatch(invalid.split('---', 3)[1], /^description:/m);
+});
