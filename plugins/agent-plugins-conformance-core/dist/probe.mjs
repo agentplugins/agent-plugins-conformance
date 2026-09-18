@@ -16970,12 +16970,12 @@ var serverName = process.argv[2];
 if (!["default", "relative", "root", "data"].includes(serverName)) {
   throw new Error("Expected probe mode: default, relative, root, or data");
 }
-var root = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
+var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var environmentNames = ["PLUGIN_ROOT", "PLUGIN_DATA", "APC_VALUE", "APC_EXPANSION", "APC_LITERAL"];
 var resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute2(process.env.PLUGIN_DATA)) {
   try {
-    resolvedData = realpathSync(process.env.PLUGIN_DATA);
+    resolvedData = realpathSync.native(process.env.PLUGIN_DATA);
   } catch {
   }
 }
@@ -16984,7 +16984,7 @@ var launch = {
   root,
   resolvedData,
   // Compare directory identity even when the OS retains a junction/alias spelling.
-  cwd: realpathSync(process.cwd()),
+  cwd: realpathSync.native(process.cwd()),
   argv: process.argv.slice(2),
   env: Object.fromEntries(environmentNames.filter((name) => process.env[name] !== void 0).map((name) => [name, process.env[name]]))
 };

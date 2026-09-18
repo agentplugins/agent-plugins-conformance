@@ -73,11 +73,15 @@ function validate(input) {
       const evidenceAt = `${at}.evidence`;
       const evidence = observation.evidence;
       const keys = observation.server === 'recovery-valid'
-        ? ['version', 'server'] : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
+        ? ['version', 'server', 'resolvedData'] : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
+      if (evidence.resolvedData !== null) {
+        string(evidence.resolvedData, `${evidenceAt}.resolvedData`);
+        if (!pathFlavor(evidence.resolvedData)) invalid(`${evidenceAt}.resolvedData`, 'expected null or an absolute POSIX or Windows path');
+      }
       if (observation.server === 'recovery-valid') {
         runtime.set(observation.server, evidence);
         continue;
@@ -85,10 +89,6 @@ function validate(input) {
       for (const field of ['root', 'cwd']) {
         string(evidence[field], `${evidenceAt}.${field}`);
         if (!pathFlavor(evidence[field])) invalid(`${evidenceAt}.${field}`, 'expected an absolute POSIX or Windows path');
-      }
-      if (evidence.resolvedData !== null) {
-        string(evidence.resolvedData, `${evidenceAt}.resolvedData`);
-        if (!pathFlavor(evidence.resolvedData)) invalid(`${evidenceAt}.resolvedData`, 'expected null or an absolute POSIX or Windows path');
       }
       array(evidence.argv, `${evidenceAt}.argv`);
       evidence.argv.forEach((argument, i) => string(argument, `${evidenceAt}.argv[${i}]`, true));
@@ -159,6 +159,28 @@ export function buildReport(input) {
   if (runtime.has('recovery-valid')) {
     set('mcp.stdio.recovery.valid-server-available', 'pass', 'Valid runtime evidence supplied for the recovery server.');
   }
+  const coreData = CORE_SERVERS.filter((server) => runtime.get(server)?.resolvedData != null)
+    .map((server) => [server, runtime.get(server).resolvedData]);
+  const missingCoreData = CORE_SERVERS.filter((server) => runtime.get(server)?.resolvedData == null);
+  const recoveryData = runtime.get('recovery-valid')?.resolvedData;
+  const sharedData = coreData.filter(([, data]) => recoveryData != null && samePath(data, recoveryData, pathFlavor(data)));
+  const missingData = [...(coreData.length ? [] : missingCoreData), ...(recoveryData == null ? ['recovery-valid'] : [])];
+  set('mcp.stdio.data.distinct-across-plugins', sharedData.length ? 'fail' : missingData.length ? 'not_verified' : 'pass',
+    sharedData.length
+      ? `Core servers ${sharedData.map(([server]) => server).join(', ')} and recovery-valid resolved PLUGIN_DATA to the same path: ${JSON.stringify(recoveryData)}.`
+      : missingData.length
+        ? `Resolved PLUGIN_DATA unavailable for: ${missingData.join(', ')}.`
+        : `Core servers ${coreData.map(([server]) => server).join(', ')} resolved PLUGIN_DATA to paths distinct from recovery-valid (${JSON.stringify(recoveryData)}).`);
+
+  const [firstCoreData, ...otherCoreData] = coreData;
+  const inconsistentData = firstCoreData
+    ? otherCoreData.filter(([, data]) => !samePath(data, firstCoreData[1], pathFlavor(firstCoreData[1]))) : [];
+  set('mcp.stdio.data.consistent-within-plugin', inconsistentData.length ? 'fail' : missingCoreData.length ? 'not_verified' : 'pass',
+    inconsistentData.length
+      ? [firstCoreData, ...inconsistentData].map(([server, data]) => `${server} resolved PLUGIN_DATA to ${JSON.stringify(data)}.`).join(' ')
+      : missingCoreData.length
+        ? `Resolved PLUGIN_DATA unavailable for: ${missingCoreData.join(', ')}.`
+        : 'All four core servers resolved PLUGIN_DATA to the same path.');
   const evidence = runtime.get('default');
   if (evidence) {
     const { root, env, argv } = evidence;
@@ -218,7 +240,7 @@ export function buildReport(input) {
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
         if (server === 'recovery-valid') {
-          return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server } };
+          return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData } };
         }
         return { kind: 'mcp-stdio', server, evidence: {
           version: evidence.version, server: evidence.server,
@@ -241,7 +263,7 @@ export function buildReport(input) {
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
       'Skill markers are agent assertions about client-loaded skills, not proof of loading.',
-      'Working directories use normalized absolute paths under the producing operating system path rules and the data path resolved by the probe; the reporter performs no filesystem lookup.',
+      'Directory comparisons use normalized absolute paths under the producing operating system path rules and data paths resolved by the probes; the reporter performs no filesystem lookup.',
     ],
   };
 }

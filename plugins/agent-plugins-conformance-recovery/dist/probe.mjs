@@ -7199,6 +7199,10 @@ var require_dist = __commonJS({
   }
 });
 
+// plugins/agent-plugins-conformance-recovery/src/probe.mjs
+import { realpathSync } from "node:fs";
+import { isAbsolute } from "node:path";
+
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -16817,7 +16821,7 @@ var Server = class extends Protocol {
 };
 
 // node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_zod@4.6.4/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
-import process from "node:process";
+import process2 from "node:process";
 
 // node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_zod@4.6.4/node_modules/@modelcontextprotocol/sdk/dist/esm/shared/stdio.js
 var STDIO_DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
@@ -16858,7 +16862,7 @@ function serializeMessage(message) {
 
 // node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_zod@4.6.4/node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
 var StdioServerTransport = class {
-  constructor(_stdin = process.stdin, _stdout = process.stdout, options) {
+  constructor(_stdin = process2.stdin, _stdout = process2.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
     this._started = false;
@@ -16924,6 +16928,13 @@ var StdioServerTransport = class {
 };
 
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
+var resolvedData = null;
+if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
+  try {
+    resolvedData = realpathSync.native(process.env.PLUGIN_DATA);
+  } catch {
+  }
+}
 var server = new Server(
   { name: "agent-plugins-conformance-recovery-valid", version: "0.1.0" },
   { capabilities: { tools: {} } }
@@ -16945,7 +16956,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     const observation = {
       kind: "mcp-stdio",
       server: "recovery-valid",
-      evidence: { version: 1, server: "recovery-valid" }
+      evidence: { version: 1, server: "recovery-valid", resolvedData }
     };
     return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
   } catch (error2) {

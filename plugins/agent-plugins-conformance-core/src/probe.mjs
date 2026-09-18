@@ -12,18 +12,18 @@ if (!['default', 'relative', 'root', 'data'].includes(serverName)) {
 }
 // Both src/ and dist/ are immediate children of the installed plugin root.
 // This value is independent of the client-provided PLUGIN_ROOT environment.
-const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 const environmentNames = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
 let resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
-  try { resolvedData = realpathSync(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
+  try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
 }
 const launch = {
   server: serverName,
   root,
   resolvedData,
   // Compare directory identity even when the OS retains a junction/alias spelling.
-  cwd: realpathSync(process.cwd()),
+  cwd: realpathSync.native(process.cwd()),
   argv: process.argv.slice(2),
   env: Object.fromEntries(environmentNames.filter((name) => process.env[name] !== undefined)
     .map((name) => [name, process.env[name]])),
