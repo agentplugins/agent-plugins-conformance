@@ -2,5 +2,5 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agent-plugins-conformance-core",
   "version": "0.1.0",
-  "description": "Guided, evidence-based Agent Plugins 1.0.0 checks for client implementers."
+  "description": "Core skill and MCP fixtures for Agent Plugins 1.0.0 conformance checks."
 }

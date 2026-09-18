@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { buildReport } from '../plugins/agent-plugins-conformance-core/src/report.mjs';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
 
 // Reference fixture launcher only. This explicitly implements the expansion
 // under test; it is NOT evidence that a third-party client loaded the plugin.

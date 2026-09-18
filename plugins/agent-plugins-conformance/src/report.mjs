@@ -4,7 +4,6 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 export { CASES, CASE_IDS } from './cases.mjs';
 const SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const SKILLS = {
-  'conformance-guide': 'APC_GUIDE_V1',
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
 };
@@ -130,7 +129,7 @@ export function buildReport(input) {
   const skillDetails = [...wrongSkills];
   if (missingSkills.length) skillDetails.push(`Missing skill observations: ${missingSkills.join(', ')}.`);
   set('skills.discovery.immediate-children', wrongSkills.length ? 'fail' : missingSkills.length ? 'not_verified' : 'pass',
-    skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for all three immediate child skills.');
+    skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for both immediate child skills.');
   for (const [server, evidence] of runtime) {
     set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server.');
     const flavor = pathFlavor(evidence.root);

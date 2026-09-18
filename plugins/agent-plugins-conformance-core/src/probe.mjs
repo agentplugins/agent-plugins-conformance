@@ -34,7 +34,7 @@ const observeTool = {
   name: 'observe',
   description: 'Return this process launch evidence, including only fixture environment variables.' +
     (serverName === 'default' ? ' Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error.' : '') +
-    ' Record the observation object from structuredContent (or parsed JSON text) unchanged with the conformance guide reporter; exclude the MCP result wrapper.',
+    ' Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: serverName !== 'default', destructiveHint: false, idempotentHint: serverName !== 'default', openWorldHint: false },
 };

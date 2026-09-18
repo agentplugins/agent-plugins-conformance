@@ -1,13 +1,11 @@
 ---
-name: conformance-guide
-description: Collect Agent Plugins conformance observations through the current client's skill and MCP mechanisms and save deterministic results to the user's requested JSON report path. Use when asked to run this plugin's conformance checks.
+name: run-conformance
+description: Collect Agent Plugins conformance observations through the current client's skill and MCP mechanisms and save deterministic results to the user's requested JSON report path. Use when asked to run Agent Plugins conformance checks.
 ---
 
 # Run the conformance probes
 
-This skill's marker is `APC_GUIDE_V1`.
-
-Use the reporting script beside this skill to maintain the JSON report as you collect evidence. The reporter assigns outcomes for the covered cases; your role is to collect and record observations faithfully.
+Collect observations from the installed Agent Plugins Conformance — Core fixture. Use the reporting script beside this skill to maintain the JSON report as you collect evidence. The reporter assigns outcomes for the covered cases; your role is to collect and record observations faithfully.
 
 ## Start the report
 
@@ -30,7 +28,7 @@ node <absolute-path-to-this-skill>/scripts/report.mjs <absolute-report-path>
 Send one JSON message through the command tool's stdin facility. If the tool accepts only shell commands, use the shell's literal-input mechanism. For example:
 
 ```sh
-node '/absolute/path/to/conformance-guide/scripts/report.mjs' '/absolute/path/to/report.json' <<'CONFORMANCE_INPUT'
+node '/absolute/path/to/run-conformance/scripts/report.mjs' '/absolute/path/to/report.json' <<'CONFORMANCE_INPUT'
 {"action":"start"}
 CONFORMANCE_INPUT
 ```
@@ -44,16 +42,15 @@ Run recording commands sequentially. Never submit recording commands together in
 ```json
 {
   "action":"record",
-  "observation":{"kind":"skill","skill":"conformance-guide","marker":"APC_GUIDE_V1"}
+  "observation":{"kind":"skill","skill":"conformance-alpha","marker":"APC_ALPHA_V1"}
 }
 ```
 
 Replace `observation` with the complete observation just obtained. The script retains the other observations, replaces any previous observation for the same skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
 
-1. Record the guide observation above only if the client exposed this skill and you loaded its body through the client's normal skill mechanism. A client-provided skill catalog followed by reading its advertised resource is a valid mechanism. Locating a known skill by filesystem search or receiving its body in a prompt does not establish client discovery.
-2. Find and load `conformance-alpha` and `conformance-beta` through that same client mechanism. Record the observation each loaded body supplies, one at a time. Do not infer their markers or claim discovery from files located independently of the client.
-3. Find each server's `observe` tool: `default`, `relative`, `root`, and `data`. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object. It begins with `{"kind":"mcp-stdio","server":...}`; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
-4. Omit observations for unavailable skills, missing tools, or calls that did not return evidence. Keep track of those collection limitations for your final response. Missing evidence remains `not_verified`; it does not by itself establish failure.
+1. Find and load `conformance-alpha` and `conformance-beta` from Agent Plugins Conformance — Core through the client's normal skill mechanism. A client-provided skill catalog followed by reading its advertised resource is a valid mechanism. Record the observation each loaded body supplies, one at a time. The example above shows the alpha observation. Do not infer their markers or claim discovery from files located independently of the client or skill bodies received in a prompt.
+2. Find each Core fixture server's `observe` tool: `default`, `relative`, `root`, and `data`. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object. It begins with `{"kind":"mcp-stdio","server":...}`; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
+3. Omit observations for unavailable skills, missing tools, or calls that did not return evidence. Keep track of those collection limitations for your final response. Missing evidence remains `not_verified`; it does not by itself establish failure.
 
 A recording error means that observation was not successfully saved. Address an input or command error using the actual evidence, or explicitly identify the unsaved observation in your final response. Distinguish a failed write from unavailable probe evidence. Retry an individual recording with `record`; invoking `start` again discards previously collected evidence.
 

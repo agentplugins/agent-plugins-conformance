@@ -1,6 +1,6 @@
 ---
 name: conformance-alpha
-description: Supply the alpha skill-discovery observation during an Agent Plugins conformance probe run. Use when the conformance guide requests this skill.
+description: Supply the alpha skill-discovery observation during an Agent Plugins conformance probe run. Use when the run-conformance skill requests this skill.
 ---
 
 # Alpha discovery probe
