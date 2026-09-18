@@ -28,6 +28,7 @@ function input() {
 function addRecovery(value) {
   value.observations.push(
     { kind: 'skill', skill: 'conformance-recovery-valid', marker: 'APC_RECOVERY_VALID_V1' },
+    { kind: 'skill', skill: 'conformance-invalid-mcp-valid', marker: 'APC_INVALID_MCP_VALID_V1' },
     { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData: '/state/recovery' } },
   );
   return value;
@@ -39,9 +40,9 @@ test('combined all-pass human report groups recovery checks with skills and MCP'
     'Agent Plugins conformance — spec 1.0.0',
     '',
     'Checks       Passed  Failed  Not verified',
-    'Skills            2       0             0',
+    'Skills            3       0             0',
     'MCP              17       0             0',
-    'Total            19       0             0',
+    'Total            20       0             0',
   ].join('\n'));
 });
 
@@ -49,7 +50,7 @@ test('all-unverified human report preserves every saved missing-evidence result'
   const value = input();
   value.observations = [];
   const human = formatReport(buildReport(value));
-  assert.match(human, /Skills\s+0\s+0\s+2/);
+  assert.match(human, /Skills\s+0\s+0\s+3/);
   assert.match(human, /MCP\s+0\s+0\s+17/);
   assert.match(human, /Missing skill observations: conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
@@ -116,7 +117,7 @@ test('human report renders saved warnings independently of result status', () =>
   const writable = value.results.find(({ id }) => id === 'mcp.stdio.data.writable');
   writable.status = 'not_verified';
   writable.warning = 'Saved cleanup warning for /state/plugin/leftover.';
-  value.summary = { pass: 15, fail: 0, not_verified: 4, total: 19 };
+  value.summary = { pass: 15, fail: 0, not_verified: 5, total: 20 };
   value.observations = [];
 
   const human = formatReport(value);

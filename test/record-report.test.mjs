@@ -210,3 +210,25 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   assert.equal(summary.status, 0, summary.stderr);
   assert.equal(summary.stdout.trimEnd(), formatReport(report));
 });
+
+test('malformed MCP skill records and replaces independently and appears in the saved summary', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  f.record(recoverySkill());
+  f.record(recoveryMcp());
+  const baseline = await f.read();
+  const id = 'skills.recovery.invalid-mcp-document';
+  for (const [marker, status] of [['APC_INVALID_MCP_VALID_V1', 'pass'], ['incorrect marker', 'fail']]) {
+    const observation = { kind: 'skill', skill: 'conformance-invalid-mcp-valid', marker };
+    f.record(observation);
+    const report = await f.read();
+    assert.deepEqual(report, expected([recoverySkill(), recoveryMcp(), observation]));
+    assert.equal(report.observations.length, 3);
+    assert.equal(report.results.find((item) => item.id === id).status, status);
+    assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
+    const summary = spawnSync(process.execPath, [fileURLToPath(new URL('../plugins/agent-plugins-conformance/skills/run-conformance/scripts/summarize.mjs', import.meta.url)), f.outputPath], { encoding: 'utf8' });
+    assert.equal(summary.status, 0, summary.stderr);
+    assert.equal(summary.stdout.trimEnd(), formatReport(report));
+    if (status === 'fail') assert.ok(summary.stdout.includes(id));
+  }
+});

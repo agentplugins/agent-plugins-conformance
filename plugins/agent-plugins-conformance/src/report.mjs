@@ -8,7 +8,11 @@ const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
 };
-const SKILLS = { ...CORE_SKILLS, 'conformance-recovery-valid': 'APC_RECOVERY_VALID_V1' };
+const SKILLS = {
+  ...CORE_SKILLS,
+  'conformance-recovery-valid': 'APC_RECOVERY_VALID_V1',
+  'conformance-invalid-mcp-valid': 'APC_INVALID_MCP_VALID_V1',
+};
 const ENV_KEYS = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
 
 function invalid(at, reason) {
@@ -155,6 +159,11 @@ export function buildReport(input) {
     check('skills.recovery.valid-skill-available', skills.get('conformance-recovery-valid') === SKILLS['conformance-recovery-valid'],
       'Agent reported the expected client-loaded marker for the valid recovery skill.',
       mismatch('Skill marker for conformance-recovery-valid', SKILLS['conformance-recovery-valid'], skills.get('conformance-recovery-valid')));
+  }
+  if (skills.has('conformance-invalid-mcp-valid')) {
+    check('skills.recovery.invalid-mcp-document', skills.get('conformance-invalid-mcp-valid') === SKILLS['conformance-invalid-mcp-valid'],
+      'Agent reported the expected client-loaded marker for the valid skill in the malformed MCP document fixture.',
+      mismatch('Skill marker for conformance-invalid-mcp-valid', SKILLS['conformance-invalid-mcp-valid'], skills.get('conformance-invalid-mcp-valid')));
   }
   if (runtime.has('recovery-valid')) {
     set('mcp.stdio.recovery.valid-server-available', 'pass', 'Valid runtime evidence supplied for the recovery server.');

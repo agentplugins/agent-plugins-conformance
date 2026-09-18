@@ -15,7 +15,7 @@ for (const directory of [
 const paths = [
   ...['agent-plugins-conformance-core', 'agent-plugins-conformance-recovery'].flatMap((plugin) =>
     ['dist/probe.mjs', 'THIRD_PARTY_NOTICES.md'].map((file) => `plugins/${plugin}/${file}`)),
-  ...['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery'].flatMap((plugin) =>
+  ...['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery', 'agent-plugins-conformance-invalid-mcp'].flatMap((plugin) =>
     ['LICENSE.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/CC-BY-4.0.txt'].map((file) => `plugins/${plugin}/${file}`)),
 ];
 const before = await Promise.all(paths.map((path) => readFile(path)));
