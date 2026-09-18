@@ -1,6 +1,6 @@
 # Agent Plugins Conformance — Core
 
-A portable [Agent Plugins](https://agent-plugins.org/) plugin for collecting evidence about skill discovery, MCP tool availability, working directories, and selected subprocess environment and placeholder rules. It provides three [Agent Skills](https://agentskills.io/specification) and four stdio MCP servers. A deterministic reporter evaluates their observations against fixed fixtures.
+A portable [Agent Plugins](https://agent-plugins.org/) plugin for collecting evidence about skill discovery and stdio MCP behavior. It provides three [Agent Skills](https://agentskills.io/specification) and four stdio MCP servers. A deterministic reporter evaluates their observations against fixed fixtures.
 
 Results describe the observed run and these covered cases; they are not whole-client certification.
 
@@ -22,7 +22,7 @@ When collection ends, the agent gives the report's absolute path and any collect
 
 The report records the latest observation for each skill or server, a flat `results` array, summary counts, and notes about the evidence.
 
-The following example is abbreviated: observations, notes, and some results are omitted. The summary covers the complete report.
+This abbreviated example shows three results and their summary counts; observations and notes are omitted.
 
 ```json
 {
@@ -52,15 +52,15 @@ The following example is abbreviated: observations, notes, and some results are 
     }
   ],
   "summary": {
-    "pass": 6,
+    "pass": 1,
     "fail": 1,
-    "not_verified": 7,
-    "total": 14
+    "not_verified": 1,
+    "total": 3
   }
 }
 ```
 
-Each result identifies its case through `id` and `label`, explains the outcome in `detail`, and cites the relevant specification sections in `specSections`.
+Each object in `results` identifies its case through `id` and `label`, explains the outcome in `detail`, and cites the relevant specification sections in `specSections`. A result object may also contain a `warning` describing a probe cleanup failure, including the probe file's path and error. This warning does not change the result's `status`.
 
 The three statuses mean:
 
@@ -129,7 +129,7 @@ jq '
 
 ### Summarize a saved report
 
-The summarizer displays saved outcomes as a table with explanations for checks that failed or were not verified. From the plugin directory, run:
+The summarizer displays saved outcomes as a table with explanations for checks that failed or were not verified, followed by any warnings. From the plugin directory, run:
 
 ```sh
 node skills/conformance-guide/scripts/summarize.mjs '/absolute/path/to/report.json'
@@ -141,8 +141,6 @@ Reporting and summarizing errors are command failures. Producing a valid report 
 
 ## Coverage
 
-The environment and argument checks use the `default` server's observation; each of the other servers supplies tool-availability and working-directory evidence.
-
 | Case IDs | What the check establishes |
 | --- | --- |
 | `skills.discovery.immediate-children` | The agent reports the expected markers for all three immediate child skills loaded through the client. Discovery depends on that account. |
@@ -151,7 +149,8 @@ The environment and argument checks use the `default` server's observation; each
 | `mcp.stdio.cwd.plugin-relative`, `mcp.stdio.cwd.plugin-root` | Relative and root-placeholder `cwd` resolve to `probe-workdir`. |
 | `mcp.stdio.cwd.plugin-data` | Data-placeholder `cwd` matches the data path resolved by the probe. |
 | `mcp.stdio.env.plugin-root` | Supplied `PLUGIN_ROOT` matches the independently determined package root. |
-| `mcp.stdio.env.plugin-data-absolute` | Supplied `PLUGIN_DATA` is an absolute path. This check does not exercise storage dedication, writability, or persistence across updates. |
+| `mcp.stdio.env.plugin-data-absolute` | Supplied `PLUGIN_DATA` is an absolute path. This check does not exercise writability, storage dedication, or persistence across updates. |
+| `mcp.stdio.data.writable` | The default server can create, write, and close a small temporary file directly in the supplied `PLUGIN_DATA` directory. |
 | `mcp.stdio.env.configured-value` | The configured value reaches the subprocess. The fixture does not arrange a conflicting inherited value, so it does not establish override behavior. |
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |

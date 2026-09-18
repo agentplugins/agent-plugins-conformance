@@ -72,6 +72,7 @@ function validate(input) {
       const evidenceAt = `${at}.evidence`;
       const evidence = observation.evidence;
       const keys = ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
+      if (observation.server === 'default') keys.push('dataWrite');
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
@@ -87,6 +88,21 @@ function validate(input) {
       evidence.argv.forEach((argument, i) => string(argument, `${evidenceAt}.argv[${i}]`, true));
       object(evidence.env, ENV_KEYS, [], `${evidenceAt}.env`);
       for (const [key, value] of Object.entries(evidence.env)) string(value, `${evidenceAt}.env.${key}`, true);
+      if (observation.server === 'default' && evidence.dataWrite !== null) {
+        const at = `${evidenceAt}.dataWrite`;
+        const write = evidence.dataWrite;
+        object(write, ['path', 'error', 'cleanupError'], ['path', 'error', 'cleanupError'], at);
+        string(write.path, `${at}.path`);
+        if (!pathFlavor(evidence.root).isAbsolute(write.path)) invalid(`${at}.path`, 'expected an absolute path for the producing operating system');
+        for (const field of ['error', 'cleanupError']) {
+          if (write[field] === null) continue;
+          const keys = field === 'error' ? ['operation', 'code', 'message'] : ['code', 'message'];
+          object(write[field], keys, keys, `${at}.${field}`);
+          if (field === 'error') member(write.error.operation, ['create', 'write', 'close'], `${at}.error.operation`);
+          if (write[field].code !== null) string(write[field].code, `${at}.${field}.code`);
+          string(write[field].message, `${at}.${field}.message`);
+        }
+      }
       runtime.set(observation.server, evidence);
     } else {
       object(observation, ['kind', 'skill', 'marker'], ['kind', 'skill', 'marker'], at);
@@ -137,6 +153,21 @@ export function buildReport(input) {
     check('mcp.stdio.env.plugin-data-absolute', typeof env.PLUGIN_DATA === 'string' && flavor.isAbsolute(env.PLUGIN_DATA),
       'PLUGIN_DATA is an absolute path for the producing operating system.',
       `PLUGIN_DATA: expected an absolute ${flavor === path.win32 ? 'Windows' : 'POSIX'} path; observed ${env.PLUGIN_DATA === undefined ? 'missing' : JSON.stringify(env.PLUGIN_DATA)}.`);
+    const write = evidence.dataWrite;
+    const writeCase = 'mcp.stdio.data.writable';
+    if (typeof env.PLUGIN_DATA !== 'string' || !flavor.isAbsolute(env.PLUGIN_DATA)) {
+      set(writeCase, 'not_verified', 'No write attempted; an absolute PLUGIN_DATA path is required.');
+    } else if (write === null) {
+      set(writeCase, 'not_verified', 'No write observation supplied.');
+    } else {
+      const describeError = ({ code, message }) => `${code ? `${code}: ` : ''}${message}`;
+      set(writeCase, write.error === null ? 'pass' : 'fail', write.error === null
+        ? 'Created, wrote, and closed a temporary file in PLUGIN_DATA.'
+        : `Temporary file ${write.error.operation} failed at ${JSON.stringify(write.path)}: ${describeError(write.error)}`);
+      if (write.cleanupError !== null) {
+        results.get(writeCase).warning = `Could not remove the probe file at ${JSON.stringify(write.path)}: ${describeError(write.cleanupError)}`;
+      }
+    }
     check('mcp.stdio.env.configured-value', env.APC_VALUE === 'fixture value with spaces',
       'Configured environment value is preserved.', mismatch('APC_VALUE', 'fixture value with spaces', env.APC_VALUE));
     if (env.PLUGIN_DATA === undefined) {
@@ -175,6 +206,15 @@ export function buildReport(input) {
           version: evidence.version, server: evidence.server,
           root: evidence.root, cwd: evidence.cwd, resolvedData: evidence.resolvedData, argv: [...evidence.argv],
           env: Object.fromEntries(ENV_KEYS.filter((key) => Object.hasOwn(evidence.env, key)).map((key) => [key, evidence.env[key]])),
+          ...(server === 'default' ? { dataWrite: evidence.dataWrite === null ? null : {
+            path: evidence.dataWrite.path,
+            error: evidence.dataWrite.error === null ? null : {
+              operation: evidence.dataWrite.error.operation, code: evidence.dataWrite.error.code, message: evidence.dataWrite.error.message,
+            },
+            cleanupError: evidence.dataWrite.cleanupError === null ? null : {
+              code: evidence.dataWrite.cleanupError.code, message: evidence.dataWrite.cleanupError.message,
+            },
+          } } : {}),
         } };
       }),
     ],

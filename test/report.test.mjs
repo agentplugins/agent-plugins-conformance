@@ -13,6 +13,7 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
         kind: 'mcp-stdio', server,
         evidence: {
           version: 1, server, root, resolvedData: data,
+          ...(server === 'default' ? { dataWrite: { path: flavor.join(data, '.agent-plugins-conformance-write-test'), error: null, cleanupError: null } } : {}),
           cwd: server === 'default' ? root : server === 'data' ? data : flavor.join(root, 'probe-workdir'),
           argv: ['default', 'arg with spaces', '', root, data, '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
           env: { PLUGIN_ROOT: root, PLUGIN_DATA: data, APC_VALUE: 'fixture value with spaces',
@@ -28,13 +29,15 @@ const result = (report, id) => report.results.find((item) => item.id === id);
 test('complete valid evidence passes every case and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 14, fail: 0, not_verified: 0, total: 14 });
+  assert.deepEqual(report.summary, { pass: 15, fail: 0, not_verified: 0, total: 15 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
+  runtime(value).dataWrite.cleanupError = { code: 'LATE', message: 'after report' };
   assert.equal(report.observations[3].evidence.argv.length, 8);
+  assert.equal(report.observations[3].evidence.dataWrite.cleanupError, null);
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -49,11 +52,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 14, total: 14 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 15, total: 15 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children']);
-  assert.equal(mcp.length, 13);
+  assert.equal(mcp.length, 14);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
@@ -63,11 +66,47 @@ test('missing observations remain unverified and every result identifies its hie
 test('missing default environment fails independent checks and leaves dependent expansion unverified', () => {
   const value = input();
   runtime(value).env = {};
+  runtime(value).dataWrite = null;
   const report = buildReport(value);
   for (const id of ['mcp.stdio.env.plugin-root', 'mcp.stdio.env.plugin-data-absolute', 'mcp.stdio.env.configured-value']) assert.equal(result(report, id).status, 'fail');
   for (const id of ['mcp.stdio.args.preservation-and-expansion', 'mcp.stdio.env.expansion']) assert.equal(result(report, id).status, 'not_verified');
+  assert.equal(result(report, 'mcp.stdio.data.writable').status, 'not_verified');
   assert.equal(result(report, 'mcp.stdio.tool-availability.cwd-omitted').status, 'pass');
   assert.equal(result(report, 'mcp.stdio.cwd.plugin-data').status, 'pass');
+});
+
+test('plugin data writability distinguishes missing evidence, failed writes, successful writes, and cleanup warnings', () => {
+  const value = input();
+  const id = 'mcp.stdio.data.writable';
+  const write = runtime(value).dataWrite;
+
+  assert.equal(result(buildReport(value), id).status, 'pass');
+
+  runtime(value).dataWrite = null;
+  assert.equal(result(buildReport(value), id).status, 'not_verified');
+
+  runtime(value).dataWrite = {
+    path: write.path,
+    error: { operation: 'write', code: 'EACCES', message: 'permission denied' },
+    cleanupError: null,
+  };
+  const failed = result(buildReport(value), id);
+  assert.equal(failed.status, 'fail');
+  assert.match(failed.detail, /write/);
+  assert.match(failed.detail, /EACCES/);
+  assert.match(failed.detail, /permission denied/);
+
+  runtime(value).dataWrite = {
+    path: write.path,
+    error: null,
+    cleanupError: { code: 'EBUSY', message: 'resource busy' },
+  };
+  const warned = result(buildReport(value), id);
+  assert.equal(warned.status, 'pass');
+  assert.equal(typeof warned.warning, 'string');
+  assert.match(warned.warning, /EBUSY/);
+  assert.match(warned.warning, /resource busy/);
+  assert.match(warned.warning, new RegExp(write.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('data cwd uses its own resolved evidence and unavailable resolution leaves that comparison unverified', () => {
@@ -86,9 +125,10 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   for (const observation of value.observations.filter(({ kind }) => kind === 'mcp-stdio')) {
     observation.evidence.resolvedData = '/private/tmp/data';
   }
+  runtime(value).dataWrite.path = '/private/tmp/data/.agent-plugins-conformance-write-test';
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
-  assert.equal(report.summary.pass, 14);
+  assert.equal(report.summary.pass, 15);
   assert.equal(report.observations[6].evidence.resolvedData, '/private/tmp/data');
   assert.equal(report.observations[3].evidence.env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
@@ -129,7 +169,7 @@ test('arguments preserve empty values, literal placeholders, spaces, and exact o
 test('path comparisons follow producing OS and normalize path components', () => {
   for (const [root, data] of [['/plugin with spaces', '/data with spaces'], ['C:\\plugin', 'D:\\data'], ['\\\\host\\share\\plugin', '\\\\host\\share\\data']]) {
     const value = input(root, data);
-    assert.equal(buildReport(value).summary.pass, 14);
+    assert.equal(buildReport(value).summary.pass, 15);
     const flavor = root.startsWith('/') ? path.posix : path.win32;
     runtime(value).cwd = `${root}${flavor.sep}sub${flavor.sep}..`;
     assert.equal(result(buildReport(value), 'mcp.stdio.cwd.omitted').status, 'pass');
@@ -137,15 +177,17 @@ test('path comparisons follow producing OS and normalize path components', () =>
 });
 
 test('data environment must be absolute under the producing operating system path rules', () => {
-  for (const [root, data, expected] of [
-    ['/plugin', 'C:\\data', 'fail'],
-    ['C:\\plugin', '/data', 'pass'],
-    ['C:\\plugin', '//server/share/data', 'pass'],
-    ['C:\\plugin', 'C:data', 'fail'],
+  for (const [root, data, expected, writable] of [
+    ['/plugin', 'C:\\data', 'fail', 'not_verified'],
+    ['C:\\plugin', '/data', 'pass', 'pass'],
+    ['C:\\plugin', '//server/share/data', 'pass', 'pass'],
+    ['C:\\plugin', 'C:data', 'fail', 'not_verified'],
   ]) {
     const value = input(root);
     runtime(value).env.PLUGIN_DATA = data;
-    assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, expected);
+    const report = buildReport(value);
+    assert.equal(result(report, 'mcp.stdio.env.plugin-data-absolute').status, expected);
+    assert.equal(result(report, 'mcp.stdio.data.writable').status, writable);
   }
 });
 
@@ -161,6 +203,7 @@ test('unknown keys, duplicate observations, identities, versions and types are r
     [(v) => { runtime(v).extra = true; }, /extra: unknown field/],
     [(v) => { runtime(v).root = 'relative'; }, /absolute/],
     [(v) => { delete runtime(v).resolvedData; }, /resolvedData: required/],
+    [(v) => { delete runtime(v).dataWrite; }, /dataWrite: required/],
     [(v) => { runtime(v).resolvedData = 'relative'; }, /absolute/],
     [(v) => { runtime(v).resolvedData = 1; }, /resolvedData: expected/],
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
@@ -197,7 +240,7 @@ test('skill discovery aggregate requires all immediate child skills and preserve
     for (const [index, skill] of ['guide', 'alpha', 'beta'].entries()) {
       if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
     }
-    assert.equal(report.summary.total, 14);
+    assert.equal(report.summary.total, 15);
     assert.equal(report.summary.fail, 0);
     assert.equal(report.summary.not_verified, included === 7 ? 0 : 1);
   }
@@ -215,7 +258,7 @@ test('incorrect skill markers fail the aggregate even when another skill is miss
     assert.match(discovery.detail, /conformance-guide: expected "APC_GUIDE_V1"; observed "wrong guide"/);
     assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
     assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
-    assert.deepEqual(report.summary, { pass: 13, fail: 1, not_verified: 0, total: 14 });
+    assert.deepEqual(report.summary, { pass: 14, fail: 1, not_verified: 0, total: 15 });
     value.observations.reverse();
     assert.equal(JSON.stringify(buildReport(value)), JSON.stringify(report));
   }

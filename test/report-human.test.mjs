@@ -14,6 +14,7 @@ function input() {
         kind: 'mcp-stdio', server,
         evidence: {
           version: 1, server, root, resolvedData: data,
+          ...(server === 'default' ? { dataWrite: { path: `${data}/.agent-plugins-conformance-write-test`, error: null, cleanupError: null } } : {}),
           cwd: server === 'default' ? root : server === 'data' ? data : `${root}/probe-workdir`,
           argv: ['default', 'arg with spaces', '', root, data, '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
           env: { PLUGIN_ROOT: root, PLUGIN_DATA: data, APC_VALUE: 'fixture value with spaces',
@@ -31,8 +32,8 @@ test('all-pass human report contains a compact check table and no empty sections
     '',
     'Checks       Passed  Failed  Not verified',
     'Skills            1       0             0',
-    'MCP              13       0             0',
-    'Total            14       0             0',
+    'MCP              14       0             0',
+    'Total            15       0             0',
   ].join('\n'));
 });
 
@@ -41,7 +42,7 @@ test('all-unverified human report preserves every saved missing-evidence result'
   value.observations = [];
   const human = formatReport(buildReport(value));
   assert.match(human, /Skills\s+0\s+0\s+1/);
-  assert.match(human, /MCP\s+0\s+0\s+13/);
+  assert.match(human, /MCP\s+0\s+0\s+14/);
   assert.match(human, /Missing skill observations: conformance-guide, conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
   assert.doesNotMatch(human, /not_verified|\nFailed\n/);
@@ -52,7 +53,7 @@ test('mixed human report puts failures before missing-evidence details', () => {
   value.observations = [value.observations[3]];
   value.observations[0].evidence.env.APC_VALUE = 'incorrect configured value';
   const human = formatReport(buildReport(value));
-  assert.match(human, /MCP\s+6\s+1\s+6/);
+  assert.match(human, /MCP\s+7\s+1\s+6/);
   assert.match(human, /Configured environment \(mcp.stdio.env.configured-value\)/);
   assert.match(human, /"fixture value with spaces"/);
   assert.match(human, /"incorrect configured value"/);
@@ -63,6 +64,7 @@ test('mixed human report puts failures before missing-evidence details', () => {
 test('unverified checks with supplied observations keep their individual reasons', () => {
   const value = input();
   delete value.observations[3].evidence.env.PLUGIN_DATA;
+  value.observations[3].evidence.dataWrite = null;
   value.observations[6].evidence.resolvedData = null;
   const human = formatReport(buildReport(value));
   assert.match(human, /Argument preservation and expansion \(mcp.stdio.args.preservation-and-expansion\)/);
@@ -87,6 +89,7 @@ test('partial runtime coverage never hides reasons from servers with supplied ob
   for (let included = 0; included < 16; included += 1) {
     const value = input();
     delete value.observations[3].evidence.env.PLUGIN_DATA;
+    value.observations[3].evidence.dataWrite = null;
     value.observations[6].evidence.resolvedData = null;
     value.observations = value.observations.filter(({ kind, server }) =>
       kind === 'skill' || (included & (1 << servers.indexOf(server))));
@@ -98,6 +101,21 @@ test('partial runtime coverage never hides reasons from servers with supplied ob
       assert.ok(human.includes(detail), id);
     }
   }
+});
+
+test('human report renders saved warnings independently of result status', () => {
+  const value = buildReport(input());
+  const writable = value.results.find(({ id }) => id === 'mcp.stdio.data.writable');
+  writable.status = 'not_verified';
+  writable.warning = 'Saved cleanup warning for /state/plugin/leftover.';
+  value.summary = { pass: 14, fail: 0, not_verified: 1, total: 15 };
+  value.observations = [];
+
+  const human = formatReport(value);
+  assert.match(human, /\nWarnings\n/);
+  assert.match(human, /Plugin data writability \(mcp\.stdio\.data\.writable\)/);
+  assert.match(human, /Saved cleanup warning for \/state\/plugin\/leftover\./);
+  assert.match(human, /\nNot verified\n/);
 });
 
 

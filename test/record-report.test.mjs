@@ -13,6 +13,7 @@ const skill = (name = 'alpha', marker = `APC_${name.toUpperCase()}_V1`) => ({ ki
 const mcp = () => ({
   kind: 'mcp-stdio', server: 'default', evidence: {
     version: 1, server: 'default', root: '/plugin', cwd: '/plugin', resolvedData: '/data',
+    dataWrite: { path: '/data/.agent-plugins-conformance-write-test', error: null, cleanupError: null },
     argv: ['default', 'arg with spaces', '', '/plugin', '/data', '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
     env: {
       PLUGIN_ROOT: '/plugin', PLUGIN_DATA: '/data', APC_VALUE: 'fixture value with spaces',
@@ -70,6 +71,7 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   replacement.evidence.env = {};
   replacement.evidence.argv = ['default'];
   replacement.evidence.resolvedData = null;
+  replacement.evidence.dataWrite = null;
   f.record(replacement);
   report = await f.read();
   assert.deepEqual(report, expected([replacement, skill('beta'), skill('alpha', 'wrong-marker')]));
@@ -77,6 +79,23 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.plugin-root').status, 'fail');
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.expansion').status, 'not_verified');
   assert.deepEqual(await readdir(join(f.directory, 'nested directory')), ['report with spaces.json']);
+});
+
+test('record preserves a cleanup warning while keeping successful writability passing', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  const observation = mcp();
+  observation.evidence.dataWrite.cleanupError = { code: 'EBUSY', message: 'resource busy' };
+  f.record(observation);
+
+  const report = await f.read();
+  const writable = report.results.find(({ id }) => id === 'mcp.stdio.data.writable');
+  assert.equal(writable.status, 'pass');
+  assert.equal(typeof writable.warning, 'string');
+  assert.match(writable.warning, /\/data\/\.agent-plugins-conformance-write-test/);
+  assert.match(writable.warning, /EBUSY/);
+  assert.match(writable.warning, /resource busy/);
+  assert.deepEqual(report.observations, [observation]);
 });
 
 test('invalid requests fail without changing an existing report', async (t) => {

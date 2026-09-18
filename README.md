@@ -6,7 +6,7 @@ Plugins for collecting evidence about client support for [Agent Plugins](https:/
 
 | Plugin | Coverage |
 | --- | --- |
-| [Agent Plugins Conformance — Core](plugins/agent-plugins-conformance-core/) | Skill discovery, MCP tool availability, working directories, and selected subprocess environment and placeholder rules |
+| [Agent Plugins Conformance — Core](plugins/agent-plugins-conformance-core/) | Skill discovery, MCP tool availability, working directories, plugin data writability, and selected subprocess environment and placeholder rules |
 
 Install **`plugins/agent-plugins-conformance-core`** through the client's Agent Plugins support. Each directory under `plugins/` is an installable plugin; the repository root is the development project.
 
