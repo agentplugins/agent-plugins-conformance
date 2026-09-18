@@ -29,14 +29,14 @@ const recoveryObservations = () => [
   { kind: 'skill', skill: 'conformance-recovery-valid', marker: 'APC_RECOVERY_VALID_V1' },
   {
     kind: 'mcp-stdio', server: 'recovery-valid',
-    evidence: { version: 1, server: 'recovery-valid' },
+    evidence: { version: 1, server: 'recovery-valid', resolvedData: '/state/recovery' },
   },
 ];
 
 test('complete core evidence passes every core case and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 15, fail: 0, not_verified: 2, total: 17 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 3, total: 19 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -49,26 +49,26 @@ test('complete core evidence passes every core case and preserves canonical evid
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 15, fail: 0, not_verified: 2, total: 17 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 3, total: 19 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 15, total: 17 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 17, total: 19 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 17, fail: 0, not_verified: 0, total: 17 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 0, total: 19 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
     'mcp.stdio.recovery.valid-server-available',
   ]);
-  assert.deepEqual(combined.results.filter(({ id }) => !recoveryIds.has(id)),
-    coreOnly.results.filter(({ id }) => !recoveryIds.has(id)));
+  assert.deepEqual(combined.results.filter(({ id }) => !recoveryIds.has(id) && id !== 'mcp.stdio.data.distinct-across-plugins'),
+    coreOnly.results.filter(({ id }) => !recoveryIds.has(id) && id !== 'mcp.stdio.data.distinct-across-plugins'));
   assert.deepEqual(combined.observations, [
     ...combinedInput.observations.filter(({ kind }) => kind === 'skill'),
     ...combinedInput.observations.filter(({ kind }) => kind === 'mcp-stdio'),
@@ -76,11 +76,11 @@ test('recovery witnesses extend the canonical report without changing core-only 
   const reordered = structuredClone(combinedInput);
   reordered.observations.reverse();
   const recoveryMcp = reordered.observations.find(({ server }) => server === 'recovery-valid');
-  recoveryMcp.evidence = { server: recoveryMcp.evidence.server, version: recoveryMcp.evidence.version };
+  recoveryMcp.evidence = { server: recoveryMcp.evidence.server, version: recoveryMcp.evidence.version, resolvedData: recoveryMcp.evidence.resolvedData };
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 17, total: 17 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 19, total: 19 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -91,7 +91,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 15, total: 17 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 17, total: 19 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -106,11 +106,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 17, total: 17 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 19, total: 19 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available']);
-  assert.equal(mcp.length, 15);
+  assert.equal(mcp.length, 17);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
@@ -182,12 +182,58 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   runtime(value).dataWrite.path = '/private/tmp/data/.agent-plugins-conformance-write-test';
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
-  assert.equal(report.summary.pass, 15);
+  assert.equal(report.summary.pass, 16);
   assert.equal(report.observations[5].evidence.resolvedData, '/private/tmp/data');
   assert.equal(report.observations[2].evidence.env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
   assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'not_verified');
   assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, 'pass');
+});
+
+test('data paths must remain distinct across the recovery and complete core evidence', () => {
+  const id = 'mcp.stdio.data.distinct-across-plugins';
+  const value = input();
+  value.observations.push(...recoveryObservations());
+  assert.equal(result(buildReport(value), id).status, 'pass');
+
+  // One observed collision is conclusive, even before every other core probe ran.
+  const collision = structuredClone(value);
+  collision.observations = collision.observations.filter(({ server }) => !server || ['default', 'data', 'recovery-valid'].includes(server));
+  runtime(collision, 'data').resolvedData = '/state/recovery';
+  assert.equal(result(buildReport(collision), id).status, 'fail');
+
+  const partialButDistinct = structuredClone(value);
+  partialButDistinct.observations = partialButDistinct.observations.filter(({ server }) => !server || server === 'default' || server === 'recovery-valid');
+  assert.equal(result(buildReport(partialButDistinct), id).status, 'pass');
+  runtime(partialButDistinct, 'recovery-valid').resolvedData = null;
+  assert.equal(result(buildReport(partialButDistinct), id).status, 'not_verified');
+
+  const windows = input('C:\\fixture\\plugin', 'D:\\state\\core');
+  windows.observations.push(...recoveryObservations());
+  runtime(windows, 'recovery-valid').resolvedData = 'D:\\state\\recovery';
+  assert.equal(result(buildReport(windows), id).status, 'pass');
+  runtime(windows, 'root').resolvedData = 'D:\\state\\recovery\\child\\..';
+  assert.equal(result(buildReport(windows), id).status, 'fail');
+});
+
+test('core probes require one consistent resolved data path, under POSIX and Windows rules', () => {
+  const id = 'mcp.stdio.data.consistent-within-plugin';
+  for (const [root, data, different] of [
+    ['/fixture/plugin', '/state/plugin', '/state/other'],
+    ['C:\\fixture\\plugin', 'D:\\state\\plugin', 'D:\\state\\other'],
+  ]) {
+    const value = input(root, data);
+    assert.equal(result(buildReport(value), id).status, 'pass');
+
+    const mismatch = structuredClone(value);
+    mismatch.observations = mismatch.observations.filter(({ server }) => !server || server === 'default' || server === 'data');
+    runtime(mismatch, 'data').resolvedData = different;
+    assert.equal(result(buildReport(mismatch), id).status, 'fail');
+
+    const incomplete = structuredClone(value);
+    incomplete.observations = incomplete.observations.filter(({ server }) => !server || server !== 'data');
+    assert.equal(result(buildReport(incomplete), id).status, 'not_verified');
+  }
 });
 
 test('wrong values fail mechanically with expected and observed diagnostics', () => {
@@ -223,7 +269,7 @@ test('arguments preserve empty values, literal placeholders, spaces, and exact o
 test('path comparisons follow producing OS and normalize path components', () => {
   for (const [root, data] of [['/plugin with spaces', '/data with spaces'], ['C:\\plugin', 'D:\\data'], ['\\\\host\\share\\plugin', '\\\\host\\share\\data']]) {
     const value = input(root, data);
-    assert.equal(buildReport(value).summary.pass, 15);
+    assert.equal(buildReport(value).summary.pass, 16);
     const flavor = root.startsWith('/') ? path.posix : path.win32;
     runtime(value).cwd = `${root}${flavor.sep}sub${flavor.sep}..`;
     assert.equal(result(buildReport(value), 'mcp.stdio.cwd.omitted').status, 'pass');
@@ -268,6 +314,20 @@ test('unknown keys, duplicate observations, identities, versions and types are r
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
 });
 
+test('recovery resolved data is nullable and uses the producing OS path syntax', () => {
+  for (const resolvedData of [null, '/state/recovery', 'D:\\state\\recovery']) {
+    const value = { schemaVersion: 1, observations: recoveryObservations() };
+    value.observations[1].evidence.resolvedData = resolvedData;
+    assert.doesNotThrow(() => buildReport(value));
+  }
+  for (const resolvedData of [undefined, 'relative/data', 1]) {
+    const value = { schemaVersion: 1, observations: recoveryObservations() };
+    if (resolvedData === undefined) delete value.observations[1].evidence.resolvedData;
+    else value.observations[1].evidence.resolvedData = resolvedData;
+    assert.throws(() => buildReport(value), /resolvedData/);
+  }
+});
+
 test('failure diagnostics preserve value boundaries and escape control characters', () => {
   const value = input();
   runtime(value).env.APC_VALUE = 'wrong\nvalue';
@@ -294,9 +354,9 @@ test('skill discovery aggregate requires all immediate child skills and preserve
     for (const [index, skill] of ['alpha', 'beta'].entries()) {
       if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
     }
-    assert.equal(report.summary.total, 17);
+    assert.equal(report.summary.total, 19);
     assert.equal(report.summary.fail, 0);
-    assert.equal(report.summary.not_verified, included === 3 ? 2 : 3);
+    assert.equal(report.summary.not_verified, included === 3 ? 3 : 4);
   }
 });
 
@@ -312,7 +372,7 @@ test('incorrect skill markers fail the aggregate even when another skill is miss
     assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
     if (!missing) assert.match(discovery.detail, /conformance-beta: expected "APC_BETA_V1"; observed "wrong beta"/);
     assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
-    assert.deepEqual(report.summary, { pass: 14, fail: 1, not_verified: 2, total: 17 });
+    assert.deepEqual(report.summary, { pass: 15, fail: 1, not_verified: 3, total: 19 });
     value.observations.reverse();
     assert.equal(JSON.stringify(buildReport(value)), JSON.stringify(report));
   }

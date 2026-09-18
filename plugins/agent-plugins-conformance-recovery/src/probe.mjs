@@ -1,7 +1,13 @@
+import { realpathSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
+let resolvedData = null;
+if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
+  try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
+}
 const server = new Server({ name: 'agent-plugins-conformance-recovery-valid', version: '0.1.0' },
   { capabilities: { tools: {} } });
 const observeTool = {
@@ -19,7 +25,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       throw new Error('observe requires an empty object');
     }
     const observation = {
-      kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid' },
+      kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData },
     };
     return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
   } catch (error) {

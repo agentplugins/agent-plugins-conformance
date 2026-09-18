@@ -14,6 +14,8 @@ export const CASES = Object.freeze([
   ['mcp.stdio.env.plugin-root', 'Plugin root environment', ['9.1']],
   ['mcp.stdio.env.plugin-data-absolute', 'Plugin data environment', ['9.1']],
   ['mcp.stdio.data.writable', 'Plugin data writability', ['9.1']],
+  ['mcp.stdio.data.distinct-across-plugins', 'Distinct data directories across plugins', ['9.1']],
+  ['mcp.stdio.data.consistent-within-plugin', 'Consistent data directory within a plugin', ['9.1']],
   ['mcp.stdio.env.configured-value', 'Configured environment', ['9.1']],
   ['mcp.stdio.args.preservation-and-expansion', 'Argument preservation and expansion', ['7.2.1', '9.2']],
   ['mcp.stdio.env.expansion', 'Environment expansion', ['9.2']],

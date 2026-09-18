@@ -48,7 +48,7 @@ test('successful formatting is independent of pass, fail, or missing evidence', 
   for (const status of ['pass', 'fail', 'not_verified']) {
     const value = report();
     for (const result of value.results) result.status = status;
-    value.summary = { pass: 0, fail: 0, not_verified: 0, total: 17, [status]: 17 };
+    value.summary = { pass: 0, fail: 0, not_verified: 0, total: 19, [status]: 19 };
     await writeFile(filename, JSON.stringify(value));
     const output = run(filename);
     assert.equal(output.status, 0, output.stderr);

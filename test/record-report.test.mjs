@@ -26,7 +26,7 @@ const recoverySkill = (marker = 'APC_RECOVERY_VALID_V1') => ({
   kind: 'skill', skill: 'conformance-recovery-valid', marker,
 });
 const recoveryMcp = () => ({
-  kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid' },
+  kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData: '/recovery-data' },
 });
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 
