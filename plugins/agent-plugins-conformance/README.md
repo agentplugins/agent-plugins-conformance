@@ -7,18 +7,19 @@ Results describe the observed run and covered cases; they are not whole-client c
 ## Run through a client
 
 1. Make Node.js 22 or newer available as `node` on the client's executable search path. The agent must also be able to execute commands. The packaged plugins require no dependency installation or build.
-2. Install the plugins listed in the [suite’s installation table](../../README.md#run-the-checks) through the client's Agent Plugins support.
-3. Ask the agent to run `run-conformance` and save the JSON report to an absolute path:
+2. For the optional Streamable HTTP checks, start the [Core fixture's bundled HTTP server](../agent-plugins-conformance-core/#optional-http-setup) in a separate terminal before the client loads the plugins. Leave it running during collection. Without it, HTTP checks remain `not_verified`; the agent continues collecting the other checks.
+3. Install and load the plugins listed in the [suite’s installation table](../../README.md#run-the-checks) through the client's Agent Plugins support.
+4. Ask the agent to run `run-conformance` and save the JSON report to an absolute path:
 
    > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
-The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records each skill marker and MCP probe observation as it arrives. The reporter creates missing parent directories and updates the JSON file after each observation. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
+The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records each skill marker and MCP probe observation as it arrives. The reporter creates missing parent directories and updates the JSON file after each recording. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
 
 When collection ends, the agent gives the report's absolute path and any collection or recording limitations. A saved report may be an incomplete snapshot if collection was interrupted; file existence alone does not establish completion.
 
 ## Read the results
 
-The report records the latest observation for each skill or server, a flat `results` array, summary counts, and notes about the evidence.
+The report contains `observations`, a flat `results` array, summary counts, and notes about the evidence. Each recording replaces the previous observation for that skill or server. Skipped or interrupted attempts leave evidence missing, as do unavailable skill and stdio observations.
 
 This abbreviated example shows three results and their summary counts; observations and notes are omitted.
 
@@ -70,9 +71,11 @@ The three statuses mean:
 
 For example, skill discovery passes when both reported markers match, fails when any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
 
+An unsuccessful HTTP discovery or call attempt fails the availability check only when the reporter confirms that the HTTP server is healthy; otherwise it remains `not_verified`.
+
 ### Choose required checks
 
-Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills and `mcp.stdio.*` covers stdio MCP behavior. Prefix queries include future checks added within the selected scope.
+Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills, `mcp.stdio.*` covers stdio MCP behavior, and `mcp.streamable-http.*` covers the optional HTTP fixture. Prefix queries include future checks added within the selected scope.
 
 For example, require all stdio MCP checks to pass:
 
@@ -136,4 +139,3 @@ node skills/run-conformance/scripts/summarize.mjs '/absolute/path/to/report.json
 This command works from an installed or extracted copy of the plugin. You can also ask the agent to summarize the saved report. The run-conformance skill invokes the summarizer only when requested.
 
 Reporting and summarizing errors are command failures. Producing a valid report with `fail` or `not_verified` results is a successful operation; acceptance queries apply your chosen requirements to those results.
-

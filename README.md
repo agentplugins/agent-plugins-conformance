@@ -4,18 +4,20 @@ Plugins for collecting evidence about client support for [Agent Plugins](https:/
 
 ## Run the checks
 
-Install these plugins through the client's Agent Plugins support:
+Node.js 22 or newer must be available as `node` on the client's executable search path, and the agent must be able to execute commands. The packaged plugins require no build or dependency installation. Each directory below is an installable plugin; the repository root is the development project.
+
+The suite includes these plugins:
 
 | Plugin directory | Purpose |
 | --- | --- |
 | [`plugins/agent-plugins-conformance`](plugins/agent-plugins-conformance/) | The `run-conformance` skill and JSON reporting tools |
-| [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery and stdio MCP behavior |
+| [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery, stdio MCP behavior, and optional Streamable HTTP checks |
 | [`plugins/agent-plugins-conformance-recovery`](plugins/agent-plugins-conformance-recovery/) | Fixtures for valid skill and MCP availability alongside invalid configuration |
 | [`plugins/agent-plugins-conformance-invalid-mcp`](plugins/agent-plugins-conformance-invalid-mcp/) | A valid skill alongside a malformed MCP document |
 
-Node.js 22 or newer must be available as `node` on the client's executable search path, and the agent must be able to execute commands. The packaged plugins require no build or dependency installation. Each directory above is an installable plugin; the repository root is the development project.
+To include the optional Streamable HTTP checks, follow the [Core fixture's HTTP setup](plugins/agent-plugins-conformance-core/#optional-http-setup) **before the client loads the plugins**. This starts a bundled local server in a separate terminal; CI can launch the same command. Without the server, HTTP checks remain `not_verified` and the agent continues collecting the other checks.
 
-Then ask the agent:
+Install and load the plugins through the client's Agent Plugins support, then ask the agent:
 
 > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 

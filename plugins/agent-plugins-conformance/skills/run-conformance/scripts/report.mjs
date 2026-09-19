@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
-import { buildReport } from '../../../src/report.mjs';
+import { buildReport, observationKey, validateInput } from '../../../src/report.mjs';
 import { validateSavedReport } from '../../../src/report-format.mjs';
+import { checkHttpHealth } from '../../../src/http-health.mjs';
 
 function validateMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) {
@@ -58,14 +59,14 @@ try {
       throw error;
     }
     validateSavedReport(saved);
-    buildReport({ schemaVersion: saved.schemaVersion, observations: saved.observations });
-    // Validate the complete new observation before deriving its replacement key.
-    buildReport({ schemaVersion: 1, observations: [message.observation] });
-    const observation = message.observation;
-    const sameKey = (existing) => existing.kind === observation.kind &&
-      (observation.kind === 'skill' ? existing.skill === observation.skill : existing.server === observation.server);
-    const observations = saved.observations.filter((existing) => !sameKey(existing));
-    observations.push(observation);
+    // Validate all saved and incoming evidence before making a health request.
+    validateInput({ schemaVersion: saved.schemaVersion, observations: saved.observations });
+    const incoming = message.observation;
+    validateInput({ schemaVersion: 1, observations: [incoming] }, { recording: true });
+    const key = observationKey(incoming);
+    const observations = saved.observations.filter((existing) => observationKey(existing) !== key);
+    observations.push(incoming.kind === 'mcp-streamable-http'
+      ? { ...incoming, serverHealthCheck: await checkHttpHealth() } : incoming);
     report = buildReport({ schemaVersion: saved.schemaVersion, observations });
   }
   await writeReport(outputPath, report);
