@@ -1,5 +1,6 @@
 ---
 name: conformance-recovery-invalid
+- description: Intentionally malformed frontmatter.
 ---
 
-This fixture intentionally omits the required description.
+This fixture intentionally has malformed YAML frontmatter.
