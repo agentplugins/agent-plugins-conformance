@@ -76,7 +76,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.equal(validateMcp(validMcp), true, JSON.stringify(validateMcp.errors));
 });
 
-test('recovery fixture has one valid skill witness and one skill missing only description', async () => {
+test('recovery fixture has one valid skill witness and one skill with malformed frontmatter', async () => {
   const root = new URL('../plugins/agent-plugins-conformance-recovery/skills/', import.meta.url);
   assert.deepEqual((await readdir(root)).sort(), ['conformance-recovery-invalid', 'conformance-recovery-valid']);
   const valid = await readFile(new URL('conformance-recovery-valid/SKILL.md', root), 'utf8');
@@ -85,10 +85,7 @@ test('recovery fixture has one valid skill witness and one skill missing only de
   assert.match(valid, /APC_RECOVERY_VALID_V1/);
 
   const invalid = await readFile(new URL('conformance-recovery-invalid/SKILL.md', root), 'utf8');
-  assert.match(invalid, /^---\nname: conformance-recovery-invalid\n---\n/);
-  // The Agent Skills specification requires `description` in frontmatter:
-  // https://agentskills.io/specification
-  assert.doesNotMatch(invalid.split('---', 3)[1], /^description:/m);
+  assert.match(invalid, /^---\nname: conformance-recovery-invalid\n- description: Intentionally malformed frontmatter\.\n---\n/);
 });
 
 test('malformed MCP fixture has a syntactically invalid document and one valid skill witness', async () => {

@@ -4,7 +4,7 @@ This fixture checks whether valid plugin features remain available when the same
 
 Install it alongside the other suite plugins and follow the [run instructions](../agent-plugins-conformance/#run-through-a-client).
 
-The plugin manifest includes the invalid fields `conformanceUnknown: true` and `extensions: false`. Its skills include invalid `conformance-recovery-invalid`, which omits the `description` required by the [Agent Skills specification](https://agentskills.io/specification), and valid `conformance-recovery-valid`. Its stdio MCP configuration includes invalid `recovery-invalid`, which omits `command`, and valid `recovery-valid`.
+The plugin manifest includes the invalid fields `conformanceUnknown: true` and `extensions: false`. Its skills include invalid `conformance-recovery-invalid`, which has malformed YAML frontmatter, and valid `conformance-recovery-valid`. Its stdio MCP configuration includes invalid `recovery-invalid`, which omits `command`, and valid `recovery-valid`.
 
 | Case ID | Covered behavior |
 | --- | --- |
