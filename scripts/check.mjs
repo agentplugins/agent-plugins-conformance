@@ -13,6 +13,7 @@ for (const directory of [
   }
 }
 const paths = [
+  'plugins/agent-plugins-conformance-core/dist/serve-http.mjs',
   ...['agent-plugins-conformance-core', 'agent-plugins-conformance-recovery'].flatMap((plugin) =>
     ['dist/probe.mjs', 'THIRD_PARTY_NOTICES.md'].map((file) => `plugins/${plugin}/${file}`)),
   ...['agent-plugins-conformance', 'agent-plugins-conformance-core', 'agent-plugins-conformance-recovery', 'agent-plugins-conformance-invalid-mcp'].flatMap((plugin) =>

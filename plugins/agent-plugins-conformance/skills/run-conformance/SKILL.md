@@ -37,7 +37,7 @@ Replace the example paths. Write the report only to the destination the user req
 
 ## Record each observation
 
-Run recording commands sequentially. Never submit recording commands together in a parallel tool-call batch; wait for each command to finish before issuing the next. Record each observation before requesting another one. After obtaining an observation, immediately send this message through stdin to the same reporting script and report path:
+Run recording commands sequentially. Never submit recording commands together in a parallel tool-call batch; wait for each command to finish before issuing the next. Record each observation before attempting another component. After obtaining an observation, immediately send this message through stdin to the same reporting script and report path:
 
 ```json
 {
@@ -46,13 +46,24 @@ Run recording commands sequentially. Never submit recording commands together in
 }
 ```
 
-Replace `observation` with the complete observation just obtained. The script retains the other observations, replaces any previous observation for the same skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
+Replace `observation` with the complete observation just obtained. The script retains the other components' evidence, replaces any previous observation for the same skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
+
+Collect all fixture skills and MCP tools through the client's normal mechanisms. The user or CI may start the optional HTTP server before client loading; do not start it or ask the user to start it during collection.
 
 1. Find and load `conformance-alpha` and `conformance-beta` from Agent Plugins Conformance — Core, `conformance-recovery-valid` from Agent Plugins Conformance — Recovery, and `conformance-invalid-mcp-valid` from Agent Plugins Conformance — Invalid MCP, through the client's normal skill mechanism. A client-provided skill catalog followed by reading its advertised resource is a valid mechanism. Record the observation each loaded body supplies, one at a time. The example above shows the alpha observation. Do not infer their markers or claim discovery from files located independently of the client or skill bodies received in a prompt.
-2. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, and `data`) and the Recovery fixture server `recovery-valid`. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object. It begins with `{"kind":"mcp-stdio","server":...}`; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
-3. Omit observations for unavailable skills, missing tools, or calls that did not return evidence. Keep track of those collection limitations for your final response. Missing evidence remains `not_verified`; it does not by itself establish failure.
+2. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, and `http`) and the Recovery fixture server `recovery-valid` through the client's normal MCP mechanism. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
+3. If a completed discovery or call attempt produces no HTTP observation, record the following object. For unavailable skill or stdio observations, or any skipped or interrupted attempt, leave the evidence missing and continue collecting the remaining components.
 
-A recording error means that observation was not successfully saved. Address an input or command error using the actual evidence, or explicitly identify the unsaved observation in your final response. Distinguish a failed write from unavailable probe evidence. Retry an individual recording with `record`; invoking `start` again discards previously collected evidence.
+```json
+{
+  "action":"record",
+  "observation":{"kind":"mcp-streamable-http","server":"http","evidence":null}
+}
+```
+
+For every HTTP recording, the reporter checks the local fixture and adds `serverHealthCheck` to the saved observation. Do not supply this field yourself. Keep track of collection limitations for your final response and leave outcome decisions to the reporter.
+
+A recording command failure means its observation was not successfully saved. Address an input or command error using the actual evidence, or identify the unsaved item in your final response. Retry an individual recording with `record`; invoking `start` again discards previously collected evidence.
 
 ## Finish collection
 

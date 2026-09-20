@@ -33,10 +33,10 @@ const recoveryObservations = () => [
   },
 ];
 
-test('complete core evidence passes every core case and preserves canonical evidence', () => {
+test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 4, total: 20 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 7, total: 23 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -49,19 +49,19 @@ test('complete core evidence passes every core case and preserves canonical evid
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 4, total: 20 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 7, total: 23 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 18, total: 20 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 21, total: 23 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 1, total: 20 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 4, total: 23 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -80,7 +80,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 20, total: 20 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 23, total: 23 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -91,7 +91,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 18, total: 20 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 21, total: 23 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -106,11 +106,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 20, total: 20 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 23, total: 23 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 17);
+  assert.equal(mcp.length, 20);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
@@ -309,7 +309,7 @@ test('unknown keys, duplicate observations, identities, versions and types are r
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
-    [(v) => { v.observations[2].kind = 'unknown'; }, /expected one of: mcp-stdio, skill/],
+    [(v) => { v.observations[2].kind = 'unknown'; }, /expected one of: mcp-stdio, mcp-streamable-http, skill/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
 });
@@ -354,9 +354,9 @@ test('skill discovery aggregate requires all immediate child skills and preserve
     for (const [index, skill] of ['alpha', 'beta'].entries()) {
       if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
     }
-    assert.equal(report.summary.total, 20);
+    assert.equal(report.summary.total, 23);
     assert.equal(report.summary.fail, 0);
-    assert.equal(report.summary.not_verified, included === 3 ? 4 : 5);
+    assert.equal(report.summary.not_verified, included === 3 ? 7 : 8);
   }
 });
 
@@ -372,7 +372,7 @@ test('incorrect skill markers fail the aggregate even when another skill is miss
     assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
     if (!missing) assert.match(discovery.detail, /conformance-beta: expected "APC_BETA_V1"; observed "wrong beta"/);
     assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
-    assert.deepEqual(report.summary, { pass: 15, fail: 1, not_verified: 4, total: 20 });
+    assert.deepEqual(report.summary, { pass: 15, fail: 1, not_verified: 7, total: 23 });
     value.observations.reverse();
     assert.equal(JSON.stringify(buildReport(value)), JSON.stringify(report));
   }
@@ -391,9 +391,96 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 0, total: 20 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 3, total: 23 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));
   }
+});
+
+const httpObservation = () => ({
+  kind: 'mcp-streamable-http', server: 'http', serverHealthCheck: 'passed', evidence: {
+    version: 1, pathname: '/conformance/mcp', query: [['value', '$APC_HTTP_VALUE']],
+    headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
+  },
+});
+const httpResults = (report) => report.results.filter(({ id }) => id.startsWith('mcp.streamable-http.'));
+
+test('native HTTP observation passes availability and evaluates URL and header independently', () => {
+  const observation = httpObservation();
+  const value = { schemaVersion: 1, observations: [observation] };
+  const report = buildReport(value);
+  assert.deepEqual(httpResults(report).map(({ status }) => status), ['pass', 'pass', 'pass']);
+  assert.deepEqual(report.observations, [observation]);
+  observation.evidence.query[0][1] = 'expanded';
+  observation.evidence.headers['x-apc-fixture'] = null;
+  assert.equal(report.observations[0].evidence.query[0][1], '$APC_HTTP_VALUE');
+  assert.notEqual(report.observations[0].evidence.headers['x-apc-fixture'], null);
+  assert.deepEqual(httpResults(buildReport(value)).map(({ status }) => status), ['pass', 'fail', 'fail']);
+});
+
+test('HTTP URL evidence preserves literal raw pathname and ordered decoded pairs', () => {
+  for (const [pathname, query] of [
+    ['/conformance/%6dcp', [['value', '$APC_HTTP_VALUE']]],
+    ['/other/mcp', [['value', '$APC_HTTP_VALUE']]],
+    ['/conformance/mcp', [['value', 'expanded']]],
+    ['/conformance/mcp', [['value', '$APC_HTTP_VALUE'], ['value', '$APC_HTTP_VALUE']]],
+    ['/conformance/mcp', []],
+  ]) {
+    const observation = httpObservation();
+    Object.assign(observation.evidence, { pathname, query });
+    const report = buildReport({ schemaVersion: 1, observations: [observation] });
+    assert.deepEqual(httpResults(report).map(({ status }) => status), ['pass', 'fail', 'pass']);
+  }
+});
+
+test('HTTP availability combines native evidence with saved server health deterministically', (t) => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('saved evidence must not trigger a health request'));
+  const empty = buildReport({ schemaVersion: 1, observations: [] });
+  assert.deepEqual(httpResults(empty).map(({ status }) => status), ['not_verified', 'not_verified', 'not_verified']);
+  for (const serverHealthCheck of ['passed', 'failed']) {
+    for (const evidence of [httpObservation().evidence, null]) {
+      const observation = { kind: 'mcp-streamable-http', server: 'http', evidence, serverHealthCheck };
+      const value = { schemaVersion: 1, observations: [observation] };
+      const report = buildReport(value);
+      assert.deepEqual(httpResults(report).map(({ status }) => status), evidence
+        ? ['pass', 'pass', 'pass']
+        : [serverHealthCheck === 'passed' ? 'fail' : 'not_verified', 'not_verified', 'not_verified']);
+      assert.deepEqual(report.observations, [observation]);
+      assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+    }
+  }
+});
+
+test('saved HTTP observations require evidence and a valid server health check', () => {
+  for (const evidence of [httpObservation().evidence, null]) {
+    for (const serverHealthCheck of [undefined, null, true, 'unknown']) {
+      const observation = { ...httpObservation(), evidence, serverHealthCheck };
+      assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }), /serverHealthCheck/);
+    }
+    const observation = { ...httpObservation(), evidence };
+    delete observation.serverHealthCheck;
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }), /serverHealthCheck/);
+  }
+  const observation = httpObservation();
+  delete observation.evidence;
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }), /evidence/);
+  const missing = { ...httpObservation(), evidence: null };
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [missing, httpObservation()] }), /duplicate/);
+});
+
+test('HTTP evidence rejects malformed schemas and duplicates', () => {
+  for (const modify of [
+    (e) => { e.query = [['name']]; },
+    (e) => { e.query = [[1, 'value']]; },
+    (e) => { e.pathname = null; },
+    (e) => { e.headers = {}; },
+    (e) => { e.headers.authorization = 'unrelated'; },
+    (e) => { e.headers['x-apc-fixture'] = false; },
+  ]) {
+    const observation = httpObservation();
+    modify(observation.evidence);
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }));
+  }
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [httpObservation(), httpObservation()] }), /duplicate/);
 });

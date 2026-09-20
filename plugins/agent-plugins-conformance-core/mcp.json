@@ -39,6 +39,13 @@
       ],
       "cwd": "${PLUGIN_ROOT}/probe-workdir"
     },
+    "http": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/mcp?value=$APC_HTTP_VALUE",
+      "headers": {
+        "x-apc-fixture": "${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces"
+      }
+    },
     "data": {
       "type": "stdio",
       "command": "node",

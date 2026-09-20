@@ -47,6 +47,10 @@ function array(value, at) {
   if (!Array.isArray(value)) invalid(at, 'expected an array');
 }
 
+export function observationKey(value) {
+  return `${value.kind}:${value.kind === 'skill' ? value.skill : value.server}`;
+}
+
 // Select the producing operating system's path rules, even for reports read elsewhere.
 function pathFlavor(value) {
   if (typeof value !== 'string') return null;
@@ -59,18 +63,46 @@ function samePath(actual, expected, flavor) {
     flavor.resolve(actual) === flavor.resolve(expected);
 }
 
-function validate(input) {
+export function validateInput(input, { recording = false } = {}) {
   object(input, ['schemaVersion', 'observations'],
     ['schemaVersion', 'observations'], 'input');
   if (input.schemaVersion !== 1) invalid('input.schemaVersion', 'expected 1');
   array(input.observations, 'input.observations');
   const runtime = new Map();
   const skills = new Map();
+  let http;
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
-    object(observation, ['kind', 'server', 'evidence', 'skill', 'marker'], ['kind'], at);
-    member(observation.kind, ['mcp-stdio', 'skill'], `${at}.kind`);
-    if (observation.kind === 'mcp-stdio') {
+    object(observation, ['kind', 'server', 'evidence', 'skill', 'marker', 'serverHealthCheck'], ['kind'], at);
+    member(observation.kind, ['mcp-stdio', 'mcp-streamable-http', 'skill'], `${at}.kind`);
+    if (observation.kind === 'mcp-streamable-http') {
+      const fields = ['kind', 'server', 'evidence', ...(recording ? [] : ['serverHealthCheck'])];
+      object(observation, fields, fields, at);
+      if (!recording) member(observation.serverHealthCheck, ['passed', 'failed'], `${at}.serverHealthCheck`);
+      member(observation.server, ['http'], `${at}.server`);
+      if (http !== undefined) invalid(at, 'duplicate mcp-streamable-http observation: http');
+      http = observation;
+      if (http.evidence === null) continue;
+      const evidenceAt = `${at}.evidence`;
+      const evidence = observation.evidence;
+      const keys = ['version', 'pathname', 'query', 'headers'];
+      object(evidence, keys, keys, evidenceAt);
+      if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
+      if (typeof evidence.pathname !== 'string') invalid(`${evidenceAt}.pathname`, 'expected a string');
+      array(evidence.query, `${evidenceAt}.query`);
+      for (const [i, pair] of evidence.query.entries()) {
+        const pairAt = `${evidenceAt}.query[${i}]`;
+        array(pair, pairAt);
+        if (pair.length !== 2) invalid(pairAt, 'expected a name and value pair');
+        for (const [j, value] of pair.entries()) {
+          if (typeof value !== 'string') invalid(`${pairAt}[${j}]`, 'expected a string');
+        }
+      }
+      object(evidence.headers, ['x-apc-fixture'], ['x-apc-fixture'], `${evidenceAt}.headers`);
+      if (evidence.headers['x-apc-fixture'] !== null && typeof evidence.headers['x-apc-fixture'] !== 'string') {
+        invalid(`${evidenceAt}.headers.x-apc-fixture`, 'expected a string or null');
+      }
+    } else if (observation.kind === 'mcp-stdio') {
       object(observation, ['kind', 'server', 'evidence'], ['kind', 'server', 'evidence'], at);
       member(observation.server, SERVERS, `${at}.server`);
       if (runtime.has(observation.server)) invalid(at, `duplicate mcp-stdio observation: ${observation.server}`);
@@ -122,16 +154,38 @@ function validate(input) {
       skills.set(observation.skill, observation.marker);
     }
   }
-  return { runtime, skills };
+  return { runtime, skills, http };
 }
 
 export function buildReport(input) {
-  const { runtime, skills } = validate(input);
+  const { runtime, skills, http } = validateInput(input);
   const results = new Map(CASES.map(({ id }) => [id, { id, status: 'not_verified', detail: 'No observation supplied.' }]));
   const set = (id, status, detail) => results.set(id, { id, status, detail });
   const check = (id, condition, pass, fail) => set(id, condition ? 'pass' : 'fail', condition ? pass : fail);
   const mismatch = (field, expected, observed) =>
     `${field}: expected ${JSON.stringify(expected)}; observed ${observed === undefined ? 'missing' : JSON.stringify(observed)}.`;
+
+  if (http?.evidence != null) {
+    const evidence = http.evidence;
+    set('mcp.streamable-http.tool-availability', 'pass', 'Valid runtime evidence supplied for the HTTP server.');
+    const expectedPathname = '/conformance/mcp';
+    const expectedQuery = [['value', '$APC_HTTP_VALUE']];
+    const differences = [];
+    if (evidence.pathname !== expectedPathname) differences.push(mismatch('URL pathname', expectedPathname, evidence.pathname));
+    if (JSON.stringify(evidence.query) !== JSON.stringify(expectedQuery)) differences.push(mismatch('URL query pairs', expectedQuery, evidence.query));
+    check('mcp.streamable-http.url.literal-route-and-query', differences.length === 0,
+      'URL pathname and decoded query pairs preserve the configured literal values.', differences.join(' '));
+    const expectedHeader = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
+    check('mcp.streamable-http.headers.literal-value', evidence.headers['x-apc-fixture'] === expectedHeader,
+      'The configured header value is preserved literally.', mismatch('x-apc-fixture header', expectedHeader, evidence.headers['x-apc-fixture']));
+  }
+
+  if (http?.evidence === null) {
+    set('mcp.streamable-http.tool-availability', http.serverHealthCheck === 'passed' ? 'fail' : 'not_verified',
+      http.serverHealthCheck === 'passed'
+        ? 'The native attempt yielded no observation while the HTTP server health check passed.'
+        : 'The native attempt yielded no observation and the HTTP server health check failed.');
+  }
 
   const missingSkills = Object.keys(CORE_SKILLS).filter((skill) => !skills.has(skill));
   const wrongSkills = Object.entries(CORE_SKILLS)
@@ -266,11 +320,21 @@ export function buildReport(input) {
           } } : {}),
         } };
       }),
+      ...(http === undefined ? [] : [{
+        kind: 'mcp-streamable-http', server: 'http',
+        evidence: http.evidence === null ? null : {
+          version: http.evidence.version, pathname: http.evidence.pathname,
+          query: http.evidence.query.map((pair) => [...pair]),
+          headers: { 'x-apc-fixture': http.evidence.headers['x-apc-fixture'] },
+        },
+        serverHealthCheck: http.serverHealthCheck,
+      }]),
     ],
     results: ordered,
     summary,
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
+      'Null HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
       'Skill markers are agent assertions about client-loaded skills, not proof of loading.',
       'Directory comparisons use normalized absolute paths under the producing operating system path rules and data paths resolved by the probes; the reporter performs no filesystem lookup.',
     ],

@@ -1,5 +1,6 @@
 * text=auto eol=lf
 plugins/*/dist/probe.mjs linguist-generated=true
+plugins/*/dist/serve-http.mjs linguist-generated=true
 plugins/*/THIRD_PARTY_NOTICES.md linguist-generated=true
 plugins/*/LICENSE.md linguist-generated=true
 plugins/*/LICENSES/*.txt linguist-generated=true

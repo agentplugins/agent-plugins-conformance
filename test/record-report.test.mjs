@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { formatReport } from '../plugins/agent-plugins-conformance/src/report-format.mjs';
 import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
@@ -29,12 +29,19 @@ const recoveryMcp = () => ({
   kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData: '/recovery-data' },
 });
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
+const http = () => ({
+  kind: 'mcp-streamable-http', server: 'http', evidence: {
+    version: 1, pathname: '/conformance/mcp', query: [['value', '$APC_HTTP_VALUE']],
+    headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
+  },
+});
+const missingHttp = () => ({ kind: 'mcp-streamable-http', server: 'http', evidence: null });
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'record-report-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const outputPath = join(directory, 'nested directory', 'report with spaces.json');
-  const run = (message, args = [outputPath], reporter = script) => spawnSync(process.execPath, [reporter, ...args], {
+  const run = (message, args = [outputPath], reporter = script, nodeArgs = []) => spawnSync(process.execPath, [...nodeArgs, reporter, ...args], {
     cwd: directory, input: typeof message === 'string' ? message : JSON.stringify(message), encoding: 'utf8', timeout: 10_000,
   });
   const success = (message, reporter) => {
@@ -48,6 +55,133 @@ async function fixture(t) {
   const read = async () => JSON.parse(await readFile(outputPath, 'utf8'));
   return { directory, outputPath, run, success, record, read };
 }
+
+// Preload a fetch double in the recorder process, avoiding shared fixed-port listeners.
+async function mockHealth(f) {
+  const loader = join(f.directory, 'mock-fetch.mjs');
+  const responseFile = join(f.directory, 'health-response.json');
+  const callsFile = join(f.directory, 'health-calls.txt');
+  await writeFile(loader, `
+    import assert from 'node:assert/strict';
+    import { appendFile, readFile } from 'node:fs/promises';
+    globalThis.fetch = async (url, options) => {
+      await appendFile(${JSON.stringify(callsFile)}, 'request\\n');
+      assert.equal(url, 'http://127.0.0.1:43187/conformance/health');
+      assert.equal(options.redirect, 'error');
+      const response = JSON.parse(await readFile(${JSON.stringify(responseFile)}, 'utf8'));
+      if (response.error) throw new Error(response.error);
+      return { status: response.status, json: async () => response.body };
+    };
+  `);
+  const setResponse = (response) => writeFile(responseFile, JSON.stringify(response));
+  await setResponse({ status: 200, body: { fixture: 'agent-plugins-conformance-http', version: 1 } });
+  return {
+    setResponse,
+    calls: async () => {
+      try { return (await readFile(callsFile, 'utf8')).trim().split('\n').length; }
+      catch (error) { if (error.code === 'ENOENT') return 0; throw error; }
+    },
+    run: (message, reporter = script) => f.run(message, [f.outputPath], reporter, ['--import', pathToFileURL(loader).href]),
+  };
+}
+
+test('every HTTP record gets fresh reporter health and replaces the prior attempt in both directions', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  for (const message of [start, { action: 'record', observation: skill() }]) {
+    const result = health.run(message);
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const attempts = [
+    [http(), 'passed'], [missingHttp(), 'passed'], [missingHttp(), 'failed'], [http(), 'failed'],
+  ];
+  let calls = 0;
+  for (const [observation, serverHealthCheck] of attempts) {
+    await health.setResponse(serverHealthCheck === 'passed'
+      ? { status: 200, body: { fixture: 'agent-plugins-conformance-http', version: 1 } }
+      : { error: 'connection refused' });
+    const result = health.run({ action: 'record', observation });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'Observation recorded.\n');
+    const report = await f.read();
+    assert.deepEqual(report, expected([skill(), { ...observation, serverHealthCheck }]));
+    assert.equal(report.results.find(({ id }) => id === 'mcp.streamable-http.tool-availability').status,
+      observation.evidence ? 'pass' : serverHealthCheck === 'passed' ? 'fail' : 'not_verified');
+    assert.equal(await health.calls(), ++calls);
+  }
+  const reset = health.run(start);
+  assert.equal(reset.status, 0, reset.stderr);
+  assert.deepEqual(await f.read(), expected([]));
+  assert.equal(await health.calls(), calls);
+});
+
+test('unrelated records preserve saved HTTP evidence and health without another health request', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  for (const observation of [http(), missingHttp()]) {
+    const reset = health.run(start);
+    assert.equal(reset.status, 0, reset.stderr);
+    const result = health.run({ action: 'record', observation });
+    assert.equal(result.status, 0, result.stderr);
+    const calls = await health.calls();
+    for (const observation of [skill(), mcp()]) {
+      const result = health.run({ action: 'record', observation });
+      assert.equal(result.status, 0, result.stderr);
+    }
+    assert.deepEqual(await f.read(), expected([skill(), mcp(), { ...observation, serverHealthCheck: 'passed' }]));
+    assert.equal(await health.calls(), calls);
+  }
+});
+
+test('missing evidence and an interrupted collection stay unverified without health checks', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  const result = health.run(start);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal((await f.read()).summary.fail, 0);
+  const recorded = health.run({ action: 'record', observation: skill() });
+  assert.equal(recorded.status, 0, recorded.stderr);
+  const report = await f.read();
+  assert.deepEqual(report.observations, [skill()]);
+  assert.ok(report.results.filter(({ id }) => id.startsWith('mcp.streamable-http.'))
+    .every(({ status }) => status === 'not_verified'));
+  assert.equal(await health.calls(), 0);
+});
+
+test('invalid HTTP input and saved state are rejected before any network request or mutation', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  let result = health.run({ action: 'record', observation: missingHttp() });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /start collection first/);
+  result = health.run(start);
+  assert.equal(result.status, 0, result.stderr);
+  const before = await readFile(f.outputPath, 'utf8');
+  const observations = [
+    { ...http(), serverHealthCheck: 'passed' },
+    { ...missingHttp(), serverHealthCheck: 'failed' },
+    { ...http(), evidence: {} },
+    { ...http(), evidence: false },
+    { kind: 'mcp-streamable-http', server: 'http' },
+    { ...http(), server: 'other' },
+    { ...http(), kind: 'other' },
+  ];
+  for (const observation of observations) {
+    result = health.run({ action: 'record', observation });
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(await readFile(f.outputPath, 'utf8'), before);
+  }
+  for (const content of ['{broken',
+    JSON.stringify({ ...expected([]), observations: [http()] }),
+    JSON.stringify({ ...expected([]), observations: [{ ...missingHttp(), serverHealthCheck: 'unknown' }] }),
+    JSON.stringify({ ...expected([]), summary: { pass: 999 } })]) {
+    await writeFile(f.outputPath, content);
+    result = health.run({ action: 'record', observation: missingHttp() });
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(await readFile(f.outputPath, 'utf8'), content);
+  }
+  assert.equal(await health.calls(), 0);
+});
 
 test('start creates nested parents and replaces all previous evidence', async (t) => {
   const f = await fixture(t);
@@ -209,6 +343,19 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   });
   assert.equal(summary.status, 0, summary.stderr);
   assert.equal(summary.stdout.trimEnd(), formatReport(report));
+
+  const health = await mockHealth(f);
+  const result = health.run({ action: 'record', observation: missingHttp() }, copiedScript);
+  assert.equal(result.status, 0, result.stderr);
+  const withHttp = await f.read();
+  assert.deepEqual(withHttp, expected([skill('alpha'), skill('beta'), { ...missingHttp(), serverHealthCheck: 'passed' }]));
+  // Reading saved evidence must remain deterministic after fixture state changes.
+  await health.setResponse({ error: 'fixture stopped after collection' });
+  const savedSummary = health.run('', join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'));
+  assert.equal(savedSummary.status, 0, savedSummary.stderr);
+  assert.equal(savedSummary.stdout.trimEnd(), formatReport(withHttp));
+  assert.equal(await health.calls(), 1);
+  assert.deepEqual(await f.read(), withHttp);
 });
 
 test('malformed MCP skill records and replaces independently and appears in the saved summary', async (t) => {
