@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -122,6 +122,30 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     });
     assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
     assert.equal(JSON.stringify(result).includes('private'), false);
+  });
+
+  await t.test('SDK connects despite a conflicting configured Accept header', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-core/mcp.json', import.meta.url), 'utf8'));
+    const configured = mcp.mcpServers.http;
+    const configuredUrl = new URL(configured.url);
+    const client = await connect(t, configuredUrl.search, configured.headers);
+    const result = await client.callTool({ name: 'observe', arguments: {} });
+    assert.deepEqual(result.structuredContent, {
+      kind: 'mcp-streamable-http', server: 'http', evidence: {
+        version: 1, pathname: configuredUrl.pathname,
+        query: [['value', '$APC_HTTP_VALUE']],
+        headers: { 'x-apc-fixture': configured.headers['x-apc-fixture'] },
+      },
+    });
+    const initialize = await http(configuredUrl.pathname + configuredUrl.search, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: configured.headers.AcCePt },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } },
+      }),
+    });
+    assert.equal(initialize.status, 406);
   });
 
   await t.test('invalid tool calls produce errors without observations', async (t) => {
