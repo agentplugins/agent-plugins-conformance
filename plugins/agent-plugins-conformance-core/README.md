@@ -20,7 +20,7 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 
 | Case IDs | What the check establishes |
 | --- | --- |
-| `skills.discovery.immediate-children` | The agent reports the expected markers for both valid immediate-child skills loaded through the client; the fixture also includes a README-only directory and a nested reference `SKILL.md`. Discovery depends on that account. |
+| `skills.discovery.immediate-children` | The agent reports the expected markers for both valid immediate-child skills loaded through the client and that the nested `conformance-nested` reference was not advertised as a separate skill. Discovery depends on that account. |
 | `mcp.stdio.tool-availability.cwd-omitted`, `mcp.stdio.tool-availability.cwd-plugin-relative`, `mcp.stdio.tool-availability.cwd-plugin-root`, `mcp.stdio.tool-availability.cwd-plugin-data` | Each server returned a valid observation. |
 | `mcp.stdio.cwd.omitted` | Omitted `cwd` uses the package root. |
 | `mcp.stdio.cwd.plugin-relative`, `mcp.stdio.cwd.plugin-root` | Relative and root-placeholder `cwd` resolve to `probe-workdir`. |

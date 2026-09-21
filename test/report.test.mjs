@@ -9,6 +9,7 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
     schemaVersion: 1,
     observations: [
       ...['alpha', 'beta'].map((name) => ({ kind: 'skill', skill: `conformance-${name}`, marker: `APC_${name.toUpperCase()}_V1` })),
+      { kind: 'skill-discovery', skill: 'conformance-nested', advertised: false },
       ...['default', 'relative', 'root', 'data'].map((server) => ({
         kind: 'mcp-stdio', server,
         evidence: {
@@ -43,8 +44,8 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
   runtime(value).dataWrite.cleanupError = { code: 'LATE', message: 'after report' };
-  assert.equal(report.observations[2].evidence.argv.length, 8);
-  assert.equal(report.observations[2].evidence.dataWrite.cleanupError, null);
+  assert.equal(runtime(report).argv.length, 8);
+  assert.equal(runtime(report).dataWrite.cleanupError, null);
 });
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
@@ -71,6 +72,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
     coreOnly.results.filter(({ id }) => !recoveryIds.has(id) && id !== 'mcp.stdio.data.distinct-across-plugins'));
   assert.deepEqual(combined.observations, [
     ...combinedInput.observations.filter(({ kind }) => kind === 'skill'),
+    ...combinedInput.observations.filter(({ kind }) => kind === 'skill-discovery'),
     ...combinedInput.observations.filter(({ kind }) => kind === 'mcp-stdio'),
   ]);
   const reordered = structuredClone(combinedInput);
@@ -183,8 +185,8 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
   assert.equal(report.summary.pass, 16);
-  assert.equal(report.observations[5].evidence.resolvedData, '/private/tmp/data');
-  assert.equal(report.observations[2].evidence.env.PLUGIN_DATA, '/tmp/data');
+  assert.equal(runtime(report, 'data').resolvedData, '/private/tmp/data');
+  assert.equal(runtime(report).env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
   assert.equal(result(buildReport(value), 'mcp.stdio.cwd.plugin-data').status, 'not_verified');
   assert.equal(result(buildReport(value), 'mcp.stdio.env.plugin-data-absolute').status, 'pass');
@@ -294,11 +296,11 @@ test('data environment must be absolute under the producing operating system pat
 test('unknown keys, duplicate observations, identities, versions and types are rejected', () => {
   const invalid = [
     [(v) => { v.status = 'pass'; }, /input.status: unknown field/],
-    [(v) => { v.observations[3] = v.observations[2]; }, /duplicate mcp-stdio/],
+    [(v) => { v.observations[4] = v.observations[3]; }, /duplicate mcp-stdio/],
     [(v) => { v.observations[1] = v.observations[0]; }, /duplicate skill/],
     [(v) => { runtime(v).env.SECRET = 'not allowed'; }, /unknown field/],
     [(v) => { runtime(v).server = 'other'; }, /must match observation.server/],
-    [(v) => { v.observations[2].server = 'other'; }, /expected one of/],
+    [(v) => { v.observations[3].server = 'other'; }, /expected one of/],
     [(v) => { runtime(v).version = 2; }, /expected 1/],
     [(v) => { runtime(v).extra = true; }, /extra: unknown field/],
     [(v) => { runtime(v).root = 'relative'; }, /absolute/],
@@ -309,7 +311,7 @@ test('unknown keys, duplicate observations, identities, versions and types are r
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
-    [(v) => { v.observations[2].kind = 'unknown'; }, /expected one of: mcp-stdio, mcp-streamable-http, skill/],
+    [(v) => { v.observations[3].kind = 'unknown'; }, /expected one of: mcp-stdio, mcp-streamable-http, skill/],
   ];
   for (const [change, pattern] of invalid) { const value = input(); change(value); assert.throws(() => buildReport(value), pattern); }
 });
@@ -342,40 +344,44 @@ test('failure diagnostics preserve value boundaries and escape control character
   assert.ok(!expansion.includes('undefined'));
 });
 
-test('skill discovery aggregate requires all immediate child skills and preserves partial observations', () => {
-  for (let included = 0; included < 4; included += 1) {
-    const value = input();
-    value.observations = value.observations.filter(({ kind }, index) =>
-      kind !== 'skill' || (included & (1 << index)));
-    const report = buildReport(value);
-    const discovery = result(report, 'skills.discovery.immediate-children');
-    assert.equal(discovery.status, included === 3 ? 'pass' : 'not_verified');
-    assert.deepEqual(report.observations, value.observations);
-    for (const [index, skill] of ['alpha', 'beta'].entries()) {
-      if (!(included & (1 << index))) assert.ok(discovery.detail.includes(`conformance-${skill}`));
+test('skill discovery requires both correct markers and explicit nested exclusion; contradictions fail immediately', () => {
+  for (const alpha of [undefined, 'APC_ALPHA_V1', 'wrong']) {
+    for (const beta of [undefined, 'APC_BETA_V1', 'wrong']) {
+      for (const advertised of [undefined, false, true]) {
+        const observations = [
+          ...(alpha === undefined ? [] : [{ kind: 'skill', skill: 'conformance-alpha', marker: alpha }]),
+          ...(beta === undefined ? [] : [{ kind: 'skill', skill: 'conformance-beta', marker: beta }]),
+          ...(advertised === undefined ? [] : [{ kind: 'skill-discovery', skill: 'conformance-nested', advertised }]),
+        ];
+        const report = buildReport({ schemaVersion: 1, observations });
+        const expected = alpha === 'wrong' || beta === 'wrong' || advertised === true ? 'fail'
+          : alpha !== undefined && beta !== undefined && advertised === false ? 'pass' : 'not_verified';
+        assert.equal(result(report, 'skills.discovery.immediate-children').status, expected,
+          JSON.stringify({ alpha, beta, advertised }));
+        assert.deepEqual(report.observations, observations);
+        assert.deepEqual(buildReport({ schemaVersion: 1, observations: report.observations }), report);
+        assert.deepEqual(buildReport({ schemaVersion: 1, observations: [...observations].reverse() }), report);
+        assert.equal(report.results.length, CASE_IDS.length);
+        assert.ok(report.results.filter(({ id }) => id !== 'skills.discovery.immediate-children')
+          .every(({ status }) => status === 'not_verified'));
+      }
     }
-    assert.equal(report.summary.total, 23);
-    assert.equal(report.summary.fail, 0);
-    assert.equal(report.summary.not_verified, included === 3 ? 7 : 8);
   }
 });
 
-test('incorrect skill markers fail the aggregate even when another skill is missing', () => {
-  for (const missing of [false, true]) {
-    const value = input();
-    value.observations[0].marker = 'wrong alpha';
-    value.observations[1].marker = 'wrong beta';
-    if (missing) value.observations.splice(1, 1);
-    const report = buildReport(value);
-    const discovery = result(report, 'skills.discovery.immediate-children');
-    assert.equal(discovery.status, 'fail');
-    assert.match(discovery.detail, /conformance-alpha: expected "APC_ALPHA_V1"; observed "wrong alpha"/);
-    if (!missing) assert.match(discovery.detail, /conformance-beta: expected "APC_BETA_V1"; observed "wrong beta"/);
-    assert.equal(discovery.detail.includes('Missing skill observations: conformance-beta.'), missing);
-    assert.deepEqual(report.summary, { pass: 15, fail: 1, not_verified: 7, total: 23 });
-    value.observations.reverse();
-    assert.equal(JSON.stringify(buildReport(value)), JSON.stringify(report));
+test('nested discovery observations require the exact identity, boolean, fields, and uniqueness', () => {
+  const observation = { kind: 'skill-discovery', skill: 'conformance-nested', advertised: false };
+  const invalid = [
+    ...[undefined, null, 0, 1, 'false', 'true', {}, []].map((advertised) => ({ ...observation, advertised })),
+    { kind: 'skill-discovery', skill: 'conformance-nested' },
+    { ...observation, skill: 'conformance-alpha' },
+    { ...observation, marker: 'APC_NESTED_V1' },
+    { ...observation, server: 'default' },
+  ];
+  for (const value of invalid) {
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [value] }), TypeError);
   }
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation, { ...observation, advertised: true }] }), /duplicate/);
 });
 
 test('malformed MCP skill evidence affects only its own result for missing, correct, and incorrect markers', () => {

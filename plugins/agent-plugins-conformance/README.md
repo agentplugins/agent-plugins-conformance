@@ -13,7 +13,7 @@ Results describe the observed run and covered cases; they are not whole-client c
 
    > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
-The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records each skill marker and MCP probe observation as it arrives. The reporter creates missing parent directories and updates the JSON file after each recording. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
+The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records observations as they are collected. The reporter creates missing parent directories and updates the JSON file after each recording. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
 
 When collection ends, the agent gives the report's absolute path and any collection or recording limitations. A saved report may be an incomplete snapshot if collection was interrupted; file existence alone does not establish completion.
 
@@ -31,7 +31,7 @@ This abbreviated example shows three results and their summary counts; observati
     {
       "id": "skills.discovery.immediate-children",
       "status": "not_verified",
-      "detail": "Missing skill observations: conformance-alpha, conformance-beta.",
+      "detail": "Missing skill observations: conformance-alpha, conformance-beta. Missing skill discovery observation: conformance-nested.",
       "label": "Immediate child skill discovery",
       "specSections": ["6.1", "7.1"]
     },
@@ -69,7 +69,7 @@ The three statuses mean:
 | `fail` | The submitted evidence contradicts an expectation checked by the fixture. |
 | `not_verified` | Evidence needed to decide the check is unavailable. |
 
-For example, skill discovery passes when both reported markers match, fails when any supplied marker is wrong, and otherwise remains `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
+For example, Core skill discovery passes when both reported markers match and the agent records that the nested `conformance-nested` reference was not advertised as a separate skill. A wrong marker or advertisement of the nested skill fails the check; missing required evidence leaves it `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
 
 An unsuccessful HTTP discovery or call attempt fails the availability check only when the reporter confirms that the HTTP server is healthy; otherwise it remains `not_verified`.
 

@@ -48,7 +48,7 @@ function array(value, at) {
 }
 
 export function observationKey(value) {
-  return `${value.kind}:${value.kind === 'skill' ? value.skill : value.server}`;
+  return `${value.kind}:${['skill', 'skill-discovery'].includes(value.kind) ? value.skill : value.server}`;
 }
 
 // Select the producing operating system's path rules, even for reports read elsewhere.
@@ -70,11 +70,12 @@ export function validateInput(input, { recording = false } = {}) {
   array(input.observations, 'input.observations');
   const runtime = new Map();
   const skills = new Map();
+  let nestedDiscovery;
   let http;
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
-    object(observation, ['kind', 'server', 'evidence', 'skill', 'marker', 'serverHealthCheck'], ['kind'], at);
-    member(observation.kind, ['mcp-stdio', 'mcp-streamable-http', 'skill'], `${at}.kind`);
+    object(observation, ['kind', 'server', 'evidence', 'skill', 'marker', 'serverHealthCheck', 'advertised'], ['kind'], at);
+    member(observation.kind, ['mcp-stdio', 'mcp-streamable-http', 'skill', 'skill-discovery'], `${at}.kind`);
     if (observation.kind === 'mcp-streamable-http') {
       const fields = ['kind', 'server', 'evidence', ...(recording ? [] : ['serverHealthCheck'])];
       object(observation, fields, fields, at);
@@ -146,6 +147,12 @@ export function validateInput(input, { recording = false } = {}) {
         }
       }
       runtime.set(observation.server, evidence);
+    } else if (observation.kind === 'skill-discovery') {
+      object(observation, ['kind', 'skill', 'advertised'], ['kind', 'skill', 'advertised'], at);
+      member(observation.skill, ['conformance-nested'], `${at}.skill`);
+      if (typeof observation.advertised !== 'boolean') invalid(`${at}.advertised`, 'expected a boolean');
+      if (nestedDiscovery !== undefined) invalid(at, 'duplicate skill-discovery observation: conformance-nested');
+      nestedDiscovery = observation.advertised;
     } else {
       object(observation, ['kind', 'skill', 'marker'], ['kind', 'skill', 'marker'], at);
       member(observation.skill, Object.keys(SKILLS), `${at}.skill`);
@@ -154,11 +161,11 @@ export function validateInput(input, { recording = false } = {}) {
       skills.set(observation.skill, observation.marker);
     }
   }
-  return { runtime, skills, http };
+  return { runtime, skills, http, nestedDiscovery };
 }
 
 export function buildReport(input) {
-  const { runtime, skills, http } = validateInput(input);
+  const { runtime, skills, http, nestedDiscovery } = validateInput(input);
   const results = new Map(CASES.map(({ id }) => [id, { id, status: 'not_verified', detail: 'No observation supplied.' }]));
   const set = (id, status, detail) => results.set(id, { id, status, detail });
   const check = (id, condition, pass, fail) => set(id, condition ? 'pass' : 'fail', condition ? pass : fail);
@@ -193,8 +200,12 @@ export function buildReport(input) {
     .map(([skill, marker]) => mismatch(`Skill marker for ${skill}`, marker, skills.get(skill)));
   const skillDetails = [...wrongSkills];
   if (missingSkills.length) skillDetails.push(`Missing skill observations: ${missingSkills.join(', ')}.`);
-  set('skills.discovery.immediate-children', wrongSkills.length ? 'fail' : missingSkills.length ? 'not_verified' : 'pass',
-    skillDetails.length ? skillDetails.join(' ') : 'Agent reported the expected client-loaded markers for both immediate child skills.');
+  if (nestedDiscovery === true) skillDetails.push('Agent reported conformance-nested advertised as an available skill.');
+  if (nestedDiscovery === undefined) skillDetails.push('Missing skill discovery observation: conformance-nested.');
+  set('skills.discovery.immediate-children', wrongSkills.length || nestedDiscovery === true ? 'fail'
+    : missingSkills.length || nestedDiscovery === undefined ? 'not_verified' : 'pass',
+    skillDetails.length ? skillDetails.join(' ')
+      : 'Agent reported the expected client-loaded markers for both immediate child skills and that conformance-nested was not advertised as an available skill.');
   for (const server of CORE_SERVERS.filter((server) => runtime.has(server))) {
     const evidence = runtime.get(server);
     set(`mcp.stdio.tool-availability.cwd-${MCP_CWD_VARIANTS[server]}`, 'pass', 'Valid runtime evidence supplied for this server.');
@@ -300,6 +311,7 @@ export function buildReport(input) {
       ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
         kind: 'skill', skill, marker: skills.get(skill),
       })),
+      ...(nestedDiscovery === undefined ? [] : [{ kind: 'skill-discovery', skill: 'conformance-nested', advertised: nestedDiscovery }]),
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
         if (server === 'recovery-valid') {
@@ -335,7 +347,7 @@ export function buildReport(input) {
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
       'Null HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
-      'Skill markers are agent assertions about client-loaded skills, not proof of loading.',
+      'Skill markers and discovery observations are agent assertions about client-loaded skills and advertised availability, not independent proof.',
       'Directory comparisons use normalized absolute paths under the producing operating system path rules and data paths resolved by the probes; the reporter performs no filesystem lookup.',
     ],
   };

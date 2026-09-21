@@ -51,8 +51,17 @@ Replace `observation` with the complete observation just obtained. The script re
 Collect all fixture skills and MCP tools through the client's normal mechanisms. The user or CI may start the optional HTTP server before client loading; do not start it or ask the user to start it during collection.
 
 1. Find and load `conformance-alpha` and `conformance-beta` from Agent Plugins Conformance — Core, `conformance-recovery-valid` from Agent Plugins Conformance — Recovery, and `conformance-invalid-mcp-valid` from Agent Plugins Conformance — Invalid MCP, through the client's normal skill mechanism. A client-provided skill catalog followed by reading its advertised resource is a valid mechanism. Record the observation each loaded body supplies, one at a time. The example above shows the alpha observation. Do not infer their markers or claim discovery from files located independently of the client or skill bodies received in a prompt.
-2. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, and `http`) and the Recovery fixture server `recovery-valid` through the client's normal MCP mechanism. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
-3. If a completed discovery or call attempt produces no HTTP observation, record the following object. For unavailable skill or stdio observations, or any skipped or interrupted attempt, leave the evidence missing and continue collecting the remaining components.
+2. Inspect the client's skill catalog for Core's `conformance-nested` reference. Record whether the client advertises it as a separate skill; names may be client-namespaced. Set `advertised` to `true` if it is advertised, or `false` if the catalog excludes it. If the catalog is unavailable or known to be incomplete, leave this observation missing unless it shows the nested skill. Finding the reference on disk does not establish advertisement, and you do not need to activate it. Record the observation through the same reporter:
+
+   ```json
+   {
+     "action":"record",
+     "observation":{"kind":"skill-discovery","skill":"conformance-nested","advertised":false}
+   }
+   ```
+
+3. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, and `http`) and the Recovery fixture server `recovery-valid` through the client's normal MCP mechanism. Tool names may be client-namespaced. Call each available tool with `{}`. Take each observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly.
+4. If a completed discovery or call attempt produces no HTTP observation, record the following object. For unavailable skill or stdio observations, or any skipped or interrupted attempt, leave the evidence missing and continue collecting the remaining components.
 
 ```json
 {

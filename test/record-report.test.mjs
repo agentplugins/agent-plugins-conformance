@@ -11,6 +11,7 @@ import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs
 const script = fileURLToPath(new URL('../plugins/agent-plugins-conformance/skills/run-conformance/scripts/report.mjs', import.meta.url));
 const start = { action: 'start' };
 const skill = (name = 'alpha', marker = `APC_${name.toUpperCase()}_V1`) => ({ kind: 'skill', skill: `conformance-${name}`, marker });
+const discovery = (advertised = false) => ({ kind: 'skill-discovery', skill: 'conformance-nested', advertised });
 const mcp = () => ({
   kind: 'mcp-stdio', server: 'default', evidence: {
     version: 1, server: 'default', root: '/plugin', cwd: '/plugin', resolvedData: '/data',
@@ -335,8 +336,9 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   f.success(start, copiedScript);
   f.success({ action: 'record', observation: skill('alpha') }, copiedScript);
   f.success({ action: 'record', observation: skill('beta') }, copiedScript);
+  f.success({ action: 'record', observation: discovery() }, copiedScript);
   const report = await f.read();
-  assert.deepEqual(report, expected([skill('alpha'), skill('beta')]));
+  assert.deepEqual(report, expected([skill('alpha'), skill('beta'), discovery()]));
   assert.equal(report.results.find(({ id }) => id === 'skills.discovery.immediate-children').status, 'pass');
   const summary = spawnSync(process.execPath, [join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'), f.outputPath], {
     cwd: f.directory, encoding: 'utf8', timeout: 10_000,
@@ -348,7 +350,7 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   const result = health.run({ action: 'record', observation: missingHttp() }, copiedScript);
   assert.equal(result.status, 0, result.stderr);
   const withHttp = await f.read();
-  assert.deepEqual(withHttp, expected([skill('alpha'), skill('beta'), { ...missingHttp(), serverHealthCheck: 'passed' }]));
+  assert.deepEqual(withHttp, expected([skill('alpha'), skill('beta'), discovery(), { ...missingHttp(), serverHealthCheck: 'passed' }]));
   // Reading saved evidence must remain deterministic after fixture state changes.
   await health.setResponse({ error: 'fixture stopped after collection' });
   const savedSummary = health.run('', join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'));
@@ -378,4 +380,35 @@ test('malformed MCP skill records and replaces independently and appears in the 
     assert.equal(summary.stdout.trimEnd(), formatReport(report));
     if (status === 'fail') assert.ok(summary.stdout.includes(id));
   }
+});
+
+
+test('nested discovery records replace in both directions and preserve unrelated observations', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  f.record(mcp());
+  f.record(recoverySkill());
+  f.record(skill('alpha'));
+  f.record(skill('beta'));
+  const id = 'skills.discovery.immediate-children';
+  const baseline = await f.read();
+  assert.equal(baseline.results.find((item) => item.id === id).status, 'not_verified');
+  for (const advertised of [false, true, false]) {
+    f.record(discovery(advertised));
+    const report = await f.read();
+    assert.deepEqual(report, expected([mcp(), recoverySkill(), skill('alpha'), skill('beta'), discovery(advertised)]));
+    assert.equal(report.results.find((item) => item.id === id).status, advertised ? 'fail' : 'pass');
+    assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
+  }
+
+  f.success(start);
+  f.record(discovery(false));
+  assert.equal((await f.read()).results.find((item) => item.id === id).status, 'not_verified');
+  f.record(discovery(true));
+  assert.equal((await f.read()).results.find((item) => item.id === id).status, 'fail');
+  f.record(skill('alpha'));
+  f.record(skill('beta'));
+  assert.equal((await f.read()).results.find((item) => item.id === id).status, 'fail');
+  f.record(discovery(false));
+  assert.equal((await f.read()).results.find((item) => item.id === id).status, 'pass');
 });
