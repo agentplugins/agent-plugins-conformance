@@ -38,4 +38,4 @@ The root development package builds and tests the plugins.
 
 Unit and integration tests exercise the packaged MCP probes through the official MCP SDK and invoke the skill-local reporting scripts. Their harness expands configuration and launches servers itself.
 
-CI also runs a pinned Codex client on Ubuntu and Windows. It installs the unchanged Core and reporting plugins, starts the HTTP fixture, calls Core's stdio and HTTP probes through Codex's native MCP runtime, and checks the saved report's covered results. The JSON report and client diagnostics are retained as CI artifacts. This smoke test requires no API key or model turn; it does not exercise an agent following the guiding skill.
+CI also runs a pinned Codex client on Ubuntu and Windows. It installs the unchanged Core, Recovery, and reporting plugins, starts the HTTP fixture, collects MCP observations through Codex's native runtime, and checks the saved report's MCP results. The JSON report and client diagnostics are retained as CI artifacts. This smoke test requires no API key or model turn; it does not exercise an agent following the guiding skill.
