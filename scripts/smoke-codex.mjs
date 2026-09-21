@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, openSync } from 'node:fs';
+import { closeSync, openSync, writeSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
@@ -16,10 +16,10 @@ const [codex, ...extra] = process.argv.slice(2);
 assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance'];
-const servers = ['default', 'relative', 'root', 'data'];
-const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.stdio.')
+const servers = ['default', 'relative', 'root', 'data', 'http'];
+const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.streamable-http.') || (id.startsWith('mcp.stdio.')
   && id !== 'mcp.stdio.data.distinct-across-plugins'
-  && !id.startsWith('mcp.stdio.recovery.'));
+  && !id.startsWith('mcp.stdio.recovery.')));
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
@@ -31,6 +31,9 @@ env.CODEX_HOME = home;
 env.PATH = `${dirname(process.execPath)}${delimiter}${searchPath}`;
 let appServer;
 let stderr;
+let httpServer;
+let httpStdout;
+let httpStderr;
 let pending;
 let protocolError;
 let sequence = 0;
@@ -81,6 +84,48 @@ function killTree(signal) {
   }
 }
 
+async function startHttp(script) {
+  httpStdout = openSync(join(output, 'http.stdout.log'), 'w');
+  httpStderr = openSync(join(output, 'http.stderr.log'), 'w');
+  httpServer = spawn(process.execPath, [script], {
+    cwd: workspace, env, stdio: ['ignore', 'pipe', httpStderr],
+  });
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => fail(new Error('HTTP fixture readiness timed out')), 10_000);
+    const fail = (error) => {
+      clearTimeout(timeout);
+      failProtocol(error);
+      reject(error);
+    };
+    httpServer.on('error', (error) => fail(new Error(`HTTP fixture could not start: ${error.message}`)));
+    httpServer.on('exit', (code, signal) => fail(new Error(`HTTP fixture exited (${code ?? signal}); see http.stderr.log`)));
+    createInterface({ input: httpServer.stdout }).on('line', (line) => {
+      writeSync(httpStdout, `${line}\n`);
+      try {
+        const message = JSON.parse(line);
+        if (message.ready === true && typeof message.url === 'string') {
+          clearTimeout(timeout);
+          resolve();
+        }
+      } catch {
+        // Preserve non-JSON diagnostics while waiting for the readiness record.
+      }
+    });
+  });
+}
+
+async function stopHttp() {
+  if (!httpServer?.pid || httpServer.exitCode !== null || httpServer.signalCode !== null) return;
+  await new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      httpServer.kill('SIGKILL');
+      resolve();
+    }, 5_000);
+    httpServer.once('exit', () => { clearTimeout(timeout); resolve(); });
+    httpServer.kill('SIGTERM');
+  });
+}
+
 try {
   await rm(output, { recursive: true, force: true });
   await Promise.all([mkdir(output, { recursive: true }), mkdir(home), mkdir(workspace),
@@ -107,6 +152,7 @@ try {
   const reporter = join(installed[1], 'skills/run-conformance/scripts/report.mjs');
   const record = (message) => run(process.execPath, [reporter, reportPath], JSON.stringify(message));
   record({ action: 'start' });
+  await startHttp(join(installed[0], 'dist/serve-http.mjs'));
 
   stderr = openSync(join(output, 'app-server.stderr.log'), 'w');
   appServer = spawn(codex, ['app-server', '--stdio'], {
@@ -147,21 +193,28 @@ try {
     });
     assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
     const observation = result.structuredContent;
-    assert.equal(observation?.kind, 'mcp-stdio', `${server}: missing stdio observation`);
+    assert.equal(observation?.kind, server === 'http' ? 'mcp-streamable-http' : 'mcp-stdio',
+      `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });
   }
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,
+    'passed', 'HTTP fixture health check did not pass');
   assert.equal(report.summary.fail, 0, `Report contains failed cases: ${JSON.stringify(report.summary)}`);
   for (const id of coveredCases) {
     assert.equal(report.results.find((result) => result.id === id)?.status, 'pass', `${id} did not pass`);
   }
-  console.log(`Native Codex smoke passed: ${coveredCases.length} Core stdio cases; ${report.summary.not_verified} not verified.`);
+  console.log(`Native Codex smoke passed: ${coveredCases.length} Core stdio and HTTP cases; ${report.summary.not_verified} not verified.`);
   console.log(`Report: ${reportPath}`);
 } catch (error) {
   console.error(`Native Codex smoke failed: ${error.message}`);
   process.exitCode = 1;
 } finally {
+  await stopHttp();
+  httpServer?.stdout?.destroy();
+  if (httpStdout !== undefined) closeSync(httpStdout);
+  if (httpStderr !== undefined) closeSync(httpStderr);
   if (appServer?.pid) {
     // Stop the native MCP children along with app-server.
     killTree('SIGTERM');
