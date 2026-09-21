@@ -2979,22 +2979,22 @@ var require_compile = __commonJS({
       }
     }
     exports.compileSchema = compileSchema;
-    function resolveRef(root, baseId, ref) {
+    function resolveRef(root2, baseId, ref) {
       var _a3;
       ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
-      const schOrFunc = root.refs[ref];
+      const schOrFunc = root2.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve.call(this, root, ref);
+      let _sch = resolve.call(this, root2, ref);
       if (_sch === void 0) {
-        const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
+        const schema = (_a3 = root2.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
         if (schema)
-          _sch = new SchemaEnv({ schema, schemaId, root, baseId });
+          _sch = new SchemaEnv({ schema, schemaId, root: root2, baseId });
       }
       if (_sch === void 0)
         return;
-      return root.refs[ref] = inlineOrCompile.call(this, _sch);
+      return root2.refs[ref] = inlineOrCompile.call(this, _sch);
     }
     exports.resolveRef = resolveRef;
     function inlineOrCompile(sch) {
@@ -3012,23 +3012,23 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve(root, ref) {
+    function resolve(root2, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
-      return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
+      return sch || this.schemas[ref] || resolveSchema.call(this, root2, ref);
     }
-    function resolveSchema(root, ref) {
+    function resolveSchema(root2, ref) {
       const p = this.opts.uriResolver.parse(ref);
       const refPath = (0, resolve_1._getFullPath)(this.opts.uriResolver, p);
-      let baseId = (0, resolve_1.getFullPath)(this.opts.uriResolver, root.baseId, void 0);
-      if (Object.keys(root.schema).length > 0 && refPath === baseId) {
-        return getJsonPointer.call(this, p, root);
+      let baseId = (0, resolve_1.getFullPath)(this.opts.uriResolver, root2.baseId, void 0);
+      if (Object.keys(root2.schema).length > 0 && refPath === baseId) {
+        return getJsonPointer.call(this, p, root2);
       }
       const id = (0, resolve_1.normalizeId)(refPath);
       const schOrRef = this.refs[id] || this.schemas[id];
       if (typeof schOrRef == "string") {
-        const sch = resolveSchema.call(this, root, schOrRef);
+        const sch = resolveSchema.call(this, root2, schOrRef);
         if (typeof (sch === null || sch === void 0 ? void 0 : sch.schema) !== "object")
           return;
         return getJsonPointer.call(this, p, sch);
@@ -3043,7 +3043,7 @@ var require_compile = __commonJS({
         const schId = schema[schemaId];
         if (schId)
           baseId = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schId);
-        return new SchemaEnv({ schema, schemaId, root, baseId });
+        return new SchemaEnv({ schema, schemaId, root: root2, baseId });
       }
       return getJsonPointer.call(this, p, schOrRef);
     }
@@ -3055,7 +3055,7 @@ var require_compile = __commonJS({
       "dependencies",
       "definitions"
     ]);
-    function getJsonPointer(parsedRef, { baseId, schema, root }) {
+    function getJsonPointer(parsedRef, { baseId, schema, root: root2 }) {
       var _a3;
       if (((_a3 = parsedRef.fragment) === null || _a3 === void 0 ? void 0 : _a3[0]) !== "/")
         return;
@@ -3074,10 +3074,10 @@ var require_compile = __commonJS({
       let env;
       if (typeof schema != "boolean" && schema.$ref && !(0, util_1.schemaHasRulesButRef)(schema, this.RULES)) {
         const $ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, schema.$ref);
-        env = resolveSchema.call(this, root, $ref);
+        env = resolveSchema.call(this, root2, $ref);
       }
       const { schemaId } = this.opts;
-      env = env || new SchemaEnv({ schema, schemaId, root, baseId });
+      env = env || new SchemaEnv({ schema, schemaId, root: root2, baseId });
       if (env.schema !== env.root.schema)
         return env;
       return void 0;
@@ -4515,8 +4515,8 @@ var require_core = __commonJS({
           keyRef = sch;
         if (sch === void 0) {
           const { schemaId } = this.opts;
-          const root = new compile_1.SchemaEnv({ schema: {}, schemaId });
-          sch = compile_1.resolveSchema.call(this, root, keyRef);
+          const root2 = new compile_1.SchemaEnv({ schema: {}, schemaId });
+          sch = compile_1.resolveSchema.call(this, root2, keyRef);
           if (!sch)
             return;
           this.refs[keyRef] = sch;
@@ -4877,20 +4877,20 @@ var require_ref = __commonJS({
       code(cxt) {
         const { gen, schema: $ref, it } = cxt;
         const { baseId, schemaEnv: env, validateName, opts, self } = it;
-        const { root } = env;
-        if (($ref === "#" || $ref === "#/") && baseId === root.baseId)
+        const { root: root2 } = env;
+        if (($ref === "#" || $ref === "#/") && baseId === root2.baseId)
           return callRootRef();
-        const schOrEnv = compile_1.resolveRef.call(self, root, baseId, $ref);
+        const schOrEnv = compile_1.resolveRef.call(self, root2, baseId, $ref);
         if (schOrEnv === void 0)
           throw new ref_error_1.default(it.opts.uriResolver, baseId, $ref);
         if (schOrEnv instanceof compile_1.SchemaEnv)
           return callValidate(schOrEnv);
         return inlineRefSchema(schOrEnv);
         function callRootRef() {
-          if (env === root)
+          if (env === root2)
             return callRef(cxt, validateName, env, env.$async);
-          const rootName = gen.scopeValue("root", { ref: root });
-          return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root, root.$async);
+          const rootName = gen.scopeValue("root", { ref: root2 });
+          return callRef(cxt, (0, codegen_1._)`${rootName}.validate`, root2, root2.$async);
         }
         function callValidate(sch) {
           const v = getValidate(cxt, sch);
@@ -7202,6 +7202,7 @@ var require_dist = __commonJS({
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
 import { realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
 var util_exports = {};
@@ -11577,8 +11578,8 @@ function encodeJSONPointerSegment(segment) {
   return segment.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 function extractDefs(ctx, schema) {
-  const root = ctx.seen.get(schema);
-  if (!root)
+  const root2 = ctx.seen.get(schema);
+  if (!root2)
     throw new Error("Unprocessed schema. This is a bug in Zod.");
   if (ctx.external && ctx.sharedDefsExtractedFor === ctx.external)
     return;
@@ -11607,7 +11608,7 @@ function extractDefs(ctx, schema) {
     }
     const uriPrefix = `#`;
     const defUriPrefix = `${uriPrefix}/${defsSegment}/`;
-    if (entry[1] === root && !entry[1].schema.id) {
+    if (entry[1] === root2 && !entry[1].schema.id) {
       return { ref: uriPrefix };
     }
     const defId = entry[1].schema.id ?? `__schema${ctx.counter++}`;
@@ -11778,8 +11779,8 @@ function foldIntersection(json) {
   assignProps(json, folded);
 }
 function finalize(ctx, schema) {
-  const root = ctx.seen.get(schema);
-  if (!root)
+  const root2 = ctx.seen.get(schema);
+  if (!root2)
     throw new Error("Unprocessed schema. This is a bug in Zod.");
   const flattenRef = (zodSchema) => {
     const seen = ctx.seen.get(zodSchema);
@@ -11890,7 +11891,7 @@ function finalize(ctx, schema) {
       throw new Error("Schema is missing an `id` property");
     result.$id = ctx.external.uri(id);
   }
-  assignProps(result, root.defId ? root.schema : root.def ?? root.schema);
+  assignProps(result, root2.defId ? root2.schema : root2.def ?? root2.schema);
   const rootMetaId = ctx.metadataRegistry.get(schema)?.id;
   if (rootMetaId !== void 0 && result.id === rootMetaId)
     delete result.id;
@@ -16935,13 +16936,15 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   } catch {
   }
 }
+var identity = process.argv[2] === "recovery-cwd-escape" ? "recovery-cwd-escape" : "recovery-valid";
+var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var server = new Server(
-  { name: "agent-plugins-conformance-recovery-valid", version: "0.1.0" },
+  { name: `agent-plugins-conformance-${identity}`, version: "0.1.0" },
   { capabilities: { tools: {} } }
 );
 var observeTool = {
   name: "observe",
-  description: "Return an observation from the valid recovery server. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+  description: identity === "recovery-valid" ? "Return an observation from the valid recovery server. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper." : "Return an observation from the recovery-cwd-escape fixture server, including its resolved plugin root and actual working directory. Record the complete observation object from structuredContent (or parsed JSON text) unchanged; exclude the MCP result wrapper.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 };
@@ -16953,10 +16956,15 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
       throw new Error("observe requires an empty object");
     }
-    const observation = {
+    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData } } : {
       kind: "mcp-stdio",
-      server: "recovery-valid",
-      evidence: { version: 1, server: "recovery-valid", resolvedData }
+      server: identity,
+      evidence: {
+        version: 1,
+        server: identity,
+        root,
+        cwd: realpathSync.native(process.cwd())
+      }
     };
     return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
   } catch (error2) {
