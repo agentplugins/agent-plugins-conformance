@@ -32,6 +32,6 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.stdio.env.configured-value` | The configured value reaches the subprocess. The fixture does not arrange a conflicting inherited value, so it does not establish override behavior. |
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |
-| `mcp.streamable-http.tool-availability` | The client exposes the HTTP tool and it returns a valid observation. A completed discovery or call attempt with no observation fails this check only when the reporter confirms that the local fixture is healthy. |
+| `mcp.streamable-http.tool-availability` | The client exposes the HTTP tool and it returns a valid observation despite a conflicting, mixed-case configured `Accept` header. A completed discovery or call attempt with no observation fails this check only when the reporter confirms that the local fixture is healthy. |
 | `mcp.streamable-http.url.literal-route-and-query` | The tool request reaches `/conformance/mcp` with the single decoded query pair `value=$APC_HTTP_VALUE`, preserving the placeholder-like text literally. |
 | `mcp.streamable-http.headers.literal-value` | Configured header values preserve placeholder-like text and spaces literally. |
