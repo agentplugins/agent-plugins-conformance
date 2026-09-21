@@ -32,11 +32,15 @@ const recoveryMcp = () => ({
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({
   kind: 'mcp-streamable-http', server: 'http', evidence: {
-    version: 1, pathname: '/conformance/mcp', query: [['value', '$APC_HTTP_VALUE']],
+    type: 'request', version: 1, pathname: '/conformance/mcp', query: [['value', '$APC_HTTP_VALUE']],
     headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
   },
 });
 const missingHttp = () => ({ kind: 'mcp-streamable-http', server: 'http', evidence: null });
+const redirectError = (classification, message = 'native error\n  with exact whitespace  ') => ({
+  kind: 'mcp-streamable-http', server: 'http-redirect',
+  evidence: { type: 'error', message, classification },
+});
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'record-report-'));
@@ -132,6 +136,32 @@ test('unrelated records preserve saved HTTP evidence and health without another 
     assert.deepEqual(await f.read(), expected([skill(), mcp(), { ...observation, serverHealthCheck: 'passed' }]));
     assert.equal(await health.calls(), calls);
   }
+});
+
+test('redirect records receive fresh health and replace independently with exact error text', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  assert.equal(health.run(start).status, 0);
+  assert.equal(health.run({ action: 'record', observation: http() }).status, 0);
+  const exact = 'native error\n\n  indented detail\t';
+  assert.equal(health.run({ action: 'record', observation: redirectError('redirect-refused', exact) }).status, 0);
+  let report = await f.read();
+  assert.deepEqual(report.observations, [
+    { ...http(), serverHealthCheck: 'passed' },
+    { ...redirectError('redirect-refused', exact), serverHealthCheck: 'passed' },
+  ]);
+  assert.equal(report.observations[1].evidence.message, exact);
+  assert.equal(report.results.find(({ id }) => id === 'mcp.streamable-http.headers.cross-origin-redirect').status, 'pass');
+
+  await health.setResponse({ error: 'source health unavailable' });
+  assert.equal(health.run({ action: 'record', observation: redirectError(null, exact) }).status, 0);
+  report = await f.read();
+  assert.deepEqual(report.observations, [
+    { ...http(), serverHealthCheck: 'passed' },
+    { ...redirectError(null, exact), serverHealthCheck: 'failed' },
+  ]);
+  assert.equal(report.results.find(({ id }) => id === 'mcp.streamable-http.headers.cross-origin-redirect').status, 'not_verified');
+  assert.equal(await health.calls(), 3);
 });
 
 test('missing evidence and an interrupted collection stay unverified without health checks', async (t) => {

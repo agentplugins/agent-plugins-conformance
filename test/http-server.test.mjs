@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { copyFile, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -115,7 +116,7 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(result.isError, undefined);
     assert.deepEqual(result.structuredContent, {
       kind: 'mcp-streamable-http', server: 'http', evidence: {
-        version: 1, pathname: '/conformance/mcp',
+        type: 'request', version: 1, pathname: '/conformance/mcp',
         query: [['value', 'first value'], ['value', '$APC_HTTP_VALUE'], ['empty', ''], ['encoded', '&=+']],
         headers: { 'x-apc-fixture': 'public marker' },
       },
@@ -132,7 +133,7 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     const result = await client.callTool({ name: 'observe', arguments: {} });
     assert.deepEqual(result.structuredContent, {
       kind: 'mcp-streamable-http', server: 'http', evidence: {
-        version: 1, pathname: configuredUrl.pathname,
+        type: 'request', version: 1, pathname: configuredUrl.pathname,
         query: [['value', '$APC_HTTP_VALUE']],
         headers: { 'x-apc-fixture': configured.headers['x-apc-fixture'] },
       },
@@ -182,10 +183,77 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.deepEqual(result.structuredContent.evidence.headers, { 'x-apc-fixture': null });
   });
 
+  await t.test('redirect fixture reports the request received at the destination', async (t) => {
+    const client = new Client({ name: 'redirect-reference-test', version: '1' });
+    t.after(() => client.close());
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${origin}/conformance/redirect`)));
+    assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'observe', arguments: {} } });
+    const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
+    for (const marker of [undefined, 'wrong']) {
+      const response = await fetch(`${origin}/conformance/redirect`, {
+        method: 'POST', headers: { ...headers, ...(marker === undefined ? {} : { 'x-apc-fixture': marker }) },
+        body, redirect: 'manual',
+      });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).result.isError, true);
+    }
+    const source = await fetch(`${origin}/conformance/redirect`, {
+      method: 'POST', headers: { ...headers, 'x-apc-fixture': 'public redirect fixture value' }, body, redirect: 'manual',
+    });
+    assert.equal(source.status, 307);
+    const target = new URL(source.headers.get('location'));
+    assert.equal(target.origin, 'http://127.0.0.1:43189');
+    assert.equal(target.searchParams.get('sourceHeader'), 'public redirect fixture value');
+    for (const receivedHeader of [null, 'public redirect fixture value']) {
+      const response = await fetch(target, {
+        method: 'POST', headers: { ...headers, ...(receivedHeader === null ? {} : { 'x-apc-fixture': receivedHeader }) }, body,
+      });
+      assert.equal(response.status, 200);
+      const result = (await response.json()).result;
+      assert.deepEqual(result.structuredContent, {
+        kind: 'mcp-streamable-http', server: 'http-redirect',
+        evidence: {
+          type: 'request', version: 1, pathname: '/conformance/redirect',
+          query: [['sourceHeader', 'public redirect fixture value']],
+          headers: { 'x-apc-fixture': receivedHeader },
+        },
+      });
+      assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+    }
+  });
+
   await t.test('stopping the process releases the listener', async () => {
     // Windows terminates the process directly rather than invoking its SIGTERM handler.
     assert.deepEqual(await server.stop(), process.platform === 'win32' ? [null, 'SIGTERM'] : [0, null]);
     assert.equal(server.stderr(), '');
     await assert.rejects(http('/conformance/health'), { code: 'ECONNREFUSED' });
   });
+});
+
+test('either occupied HTTP port prevents readiness and releases the other listener', { timeout: 15_000 }, async () => {
+  const entry = new URL('../plugins/agent-plugins-conformance-core/dist/serve-http.mjs', import.meta.url);
+  for (const occupied of [43187, 43189]) {
+    const blocker = createServer();
+    blocker.listen(occupied, '127.0.0.1');
+    await once(blocker, 'listening');
+    const child = spawn(process.execPath, [fileURLToPath(entry)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    try {
+      assert.deepEqual(await within(once(child, 'exit'), 3_000, 'Failed startup retained a listener'), [1, null]);
+      assert.equal(stdout, '');
+      assert.ok(stderr.includes(`127.0.0.1:${occupied}/`), stderr);
+      assert.ok(stderr.includes('EADDRINUSE'), stderr);
+      const other = createServer();
+      other.listen(occupied === 43187 ? 43189 : 43187, '127.0.0.1');
+      await once(other, 'listening');
+      await new Promise((resolve) => other.close(resolve));
+    } finally {
+      child.kill('SIGKILL');
+      await new Promise((resolve) => blocker.close(resolve));
+    }
+  }
 });

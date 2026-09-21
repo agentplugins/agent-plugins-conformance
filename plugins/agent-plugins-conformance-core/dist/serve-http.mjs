@@ -7311,6 +7311,20 @@ var require_content_type = __commonJS({
 // plugins/agent-plugins-conformance-core/src/serve-http.mjs
 import { createServer } from "node:http";
 
+// plugins/agent-plugins-conformance-core/src/http-request.mjs
+function requestEvidence(request) {
+  const separator = request.url.indexOf("?");
+  const pathname2 = separator === -1 ? request.url : request.url.slice(0, separator);
+  return {
+    type: "request",
+    version: 1,
+    pathname: pathname2,
+    // URLSearchParams yields decoded pairs and preserves duplicates and order.
+    query: [...new URLSearchParams(separator === -1 ? "" : request.url.slice(separator + 1))],
+    headers: { "x-apc-fixture": request.headers["x-apc-fixture"] ?? null }
+  };
+}
+
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
@@ -18977,6 +18991,68 @@ var StreamableHTTPServerTransport = class {
   }
 };
 
+// plugins/agent-plugins-conformance-core/src/redirect.mjs
+var expectedHeader = "public redirect fixture value";
+var destination = "http://127.0.0.1:43189/conformance/redirect";
+async function handleRedirect(request, response, role) {
+  let server;
+  try {
+    if (new URL(request.url, "http://localhost").pathname !== "/conformance/redirect") {
+      response.writeHead(404).end();
+      return;
+    }
+    if (request.method !== "POST") {
+      response.writeHead(405, { Allow: "POST" }).end();
+      return;
+    }
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const receivedHeader = request.headers["x-apc-fixture"] ?? null;
+    if (role === "source" && body.method === "tools/call" && body.params?.name === "observe" && receivedHeader === expectedHeader) {
+      const target = new URL(destination);
+      target.searchParams.set("sourceHeader", receivedHeader);
+      response.writeHead(307, { Location: target.href, "Cache-Control": "no-store" }).end();
+      return;
+    }
+    server = new Server(
+      { name: `agent-plugins-conformance-redirect-${role}`, version: "0.1.0" },
+      { capabilities: { tools: {} } }
+    );
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: void 0, enableJsonResponse: true });
+    response.on("close", () => {
+      void server.close();
+    });
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
+      name: "observe",
+      description: "Agent Plugins Conformance \u2014 Core, server ID: http-redirect. Return the public request evidence received at the destination of a cross-origin redirect. Record the observation from structuredContent or parsed JSON text unchanged with run-conformance.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    }] }));
+    server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+      if (params.name !== "observe" || !params.arguments || typeof params.arguments !== "object" || Array.isArray(params.arguments) || Object.keys(params.arguments).length !== 0) {
+        return { isError: true, content: [{ type: "text", text: "Expected observe with empty arguments" }] };
+      }
+      if (role === "source") {
+        return { isError: true, content: [{ type: "text", text: "The source did not receive the expected public configured header." }] };
+      }
+      const observation = {
+        kind: "mcp-streamable-http",
+        server: "http-redirect",
+        evidence: requestEvidence(request)
+      };
+      return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
+    });
+    await server.connect(transport);
+    await transport.handleRequest(request, response, body);
+  } catch (error2) {
+    console.error(`Redirect fixture request error: ${error2.message}`);
+    if (!response.headersSent) response.writeHead(500).end();
+    else response.destroy();
+    await server?.close();
+  }
+}
+
 // plugins/agent-plugins-conformance-core/src/serve-http.mjs
 var host = "127.0.0.1";
 var port = 43187;
@@ -18985,6 +19061,10 @@ var url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 var listener = createServer(async (request, response) => {
   const separator = request.url.indexOf("?");
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
+  if (requestPathname === "/conformance/redirect") {
+    await handleRedirect(request, response, "source");
+    return;
+  }
   if (requestPathname === "/conformance/health") {
     if (request.method !== "GET") {
       response.writeHead(405, { Allow: "GET" }).end();
@@ -19004,13 +19084,7 @@ var listener = createServer(async (request, response) => {
   const observation = {
     kind: "mcp-streamable-http",
     server: "http",
-    evidence: {
-      version: 1,
-      pathname: requestPathname,
-      // URLSearchParams yields decoded pairs and preserves duplicates and order.
-      query: [...new URLSearchParams(separator === -1 ? "" : request.url.slice(separator + 1))],
-      headers: { "x-apc-fixture": request.headers["x-apc-fixture"] ?? null }
-    }
+    evidence: requestEvidence(request)
   };
   const server = new Server(
     { name: "agent-plugins-conformance-http", version: "0.1.0" },
@@ -19022,7 +19096,7 @@ var listener = createServer(async (request, response) => {
   });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: "observe",
-    description: "Return this tool request\u2019s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+    description: "Agent Plugins Conformance \u2014 Core, server ID: http. Return this tool request\u2019s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }] }));
@@ -19045,16 +19119,33 @@ var listener = createServer(async (request, response) => {
     await server.close();
   }
 });
-listener.on("error", (error2) => {
-  console.error(`HTTP fixture could not listen at ${url}: ${error2.code ?? error2.message}`);
-  process.exitCode = 1;
-});
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.once(signal, () => {
-    listener.close();
-    listener.closeAllConnections();
+var redirectDestination = createServer((request, response) => handleRedirect(request, response, "destination"));
+var listeners = [
+  { server: listener, port, url },
+  { server: redirectDestination, port: 43189, url: `http://${host}:43189/conformance/redirect` }
+];
+var readyCount = 0;
+var startupFailed = false;
+function closeListeners() {
+  for (const { server } of listeners) {
+    server.close();
+    server.closeAllConnections();
+  }
+}
+for (const { server, port: serverPort, url: serverUrl } of listeners) {
+  server.on("error", (error2) => {
+    startupFailed = true;
+    console.error(`HTTP fixture could not listen at ${serverUrl}: ${error2.code ?? error2.message}`);
+    process.exitCode = 1;
+    closeListeners();
+  });
+  server.listen(serverPort, host, () => {
+    if (startupFailed) {
+      closeListeners();
+      return;
+    }
+    readyCount += 1;
+    if (readyCount === listeners.length) console.log(JSON.stringify({ ready: true, url }));
   });
 }
-listener.listen(port, host, () => {
-  console.log(JSON.stringify({ ready: true, url }));
-});
+for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, closeListeners);

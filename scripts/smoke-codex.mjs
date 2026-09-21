@@ -17,7 +17,9 @@ assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
 const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
-const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.'));
+// Redirect refusal requires the guiding agent to interpret and preserve the native error.
+const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.') &&
+  id !== 'mcp.streamable-http.headers.cross-origin-redirect');
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
