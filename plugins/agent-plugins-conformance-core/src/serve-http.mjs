@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import { requestEvidence } from './http-request.mjs';
+import { handleRedirect } from './redirect.mjs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -10,9 +12,12 @@ const url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 
 // No session or observation state is shared between requests or client runs.
 const listener = createServer(async (request, response) => {
-  // Keep the received pathname intact: URL parsing would normalize dot segments.
   const separator = request.url.indexOf('?');
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
+  if (requestPathname === '/conformance/redirect') {
+    await handleRedirect(request, response, 'source');
+    return;
+  }
   if (requestPathname === '/conformance/health') {
     if (request.method !== 'GET') {
       response.writeHead(405, { Allow: 'GET' }).end();
@@ -33,13 +38,7 @@ const listener = createServer(async (request, response) => {
   const observation = {
     kind: 'mcp-streamable-http',
     server: 'http',
-    evidence: {
-      version: 1,
-      pathname: requestPathname,
-      // URLSearchParams yields decoded pairs and preserves duplicates and order.
-      query: [...new URLSearchParams(separator === -1 ? '' : request.url.slice(separator + 1))],
-      headers: { 'x-apc-fixture': request.headers['x-apc-fixture'] ?? null },
-    },
+    evidence: requestEvidence(request),
   };
   const server = new Server({ name: 'agent-plugins-conformance-http', version: '0.1.0' },
     { capabilities: { tools: {} } });
@@ -47,7 +46,7 @@ const listener = createServer(async (request, response) => {
   response.on('close', () => { void server.close(); });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: 'observe',
-    description: 'Return this tool request’s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
+    description: 'Agent Plugins Conformance — Core, server ID: http. Return this tool request’s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }] }));
@@ -72,16 +71,30 @@ const listener = createServer(async (request, response) => {
   }
 });
 
-listener.on('error', (error) => {
-  console.error(`HTTP fixture could not listen at ${url}: ${error.code ?? error.message}`);
-  process.exitCode = 1;
-});
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.once(signal, () => {
-    listener.close();
-    listener.closeAllConnections();
+const redirectDestination = createServer((request, response) => handleRedirect(request, response, 'destination'));
+const listeners = [
+  { server: listener, port, url },
+  { server: redirectDestination, port: 43189, url: `http://${host}:43189/conformance/redirect` },
+];
+let readyCount = 0;
+let startupFailed = false;
+function closeListeners() {
+  for (const { server } of listeners) {
+    server.close();
+    server.closeAllConnections();
+  }
+}
+for (const { server, port: serverPort, url: serverUrl } of listeners) {
+  server.on('error', (error) => {
+    startupFailed = true;
+    console.error(`HTTP fixture could not listen at ${serverUrl}: ${error.code ?? error.message}`);
+    process.exitCode = 1;
+    closeListeners();
+  });
+  server.listen(serverPort, host, () => {
+    if (startupFailed) { closeListeners(); return; }
+    readyCount += 1;
+    if (readyCount === listeners.length) console.log(JSON.stringify({ ready: true, url }));
   });
 }
-listener.listen(port, host, () => {
-  console.log(JSON.stringify({ ready: true, url }));
-});
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, closeListeners);

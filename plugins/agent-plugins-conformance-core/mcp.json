@@ -55,6 +55,13 @@
         "data"
       ],
       "cwd": "${PLUGIN_DATA}"
+    },
+    "http-redirect": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/redirect",
+      "headers": {
+        "x-apc-fixture": "public redirect fixture value"
+      }
     }
   }
 }

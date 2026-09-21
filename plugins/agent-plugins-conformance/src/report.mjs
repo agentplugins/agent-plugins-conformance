@@ -4,6 +4,7 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const SERVERS = [...CORE_SERVERS, 'recovery-valid'];
+const HTTP_SERVERS = ['http', 'http-redirect'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -47,6 +48,36 @@ function array(value, at) {
   if (!Array.isArray(value)) invalid(at, 'expected an array');
 }
 
+function validateHttpEvidence(evidence, at) {
+  object(evidence, ['type', 'version', 'pathname', 'query', 'headers', 'message', 'classification'], ['type'], at);
+  member(evidence.type, ['request', 'error'], `${at}.type`);
+  if (evidence.type === 'error') {
+    object(evidence, ['type', 'message', 'classification'], ['type', 'message', 'classification'], at);
+    string(evidence.message, `${at}.message`);
+    if (evidence.classification !== null && evidence.classification !== 'redirect-refused') {
+      invalid(`${at}.classification`, 'expected redirect-refused or null');
+    }
+    return;
+  }
+  object(evidence, ['type', 'version', 'pathname', 'query', 'headers'],
+    ['type', 'version', 'pathname', 'query', 'headers'], at);
+  if (evidence.version !== 1) invalid(`${at}.version`, 'expected 1');
+  if (typeof evidence.pathname !== 'string') invalid(`${at}.pathname`, 'expected a string');
+  array(evidence.query, `${at}.query`);
+  for (const [i, pair] of evidence.query.entries()) {
+    const pairAt = `${at}.query[${i}]`;
+    array(pair, pairAt);
+    if (pair.length !== 2) invalid(pairAt, 'expected a name and value pair');
+    for (const [j, value] of pair.entries()) {
+      if (typeof value !== 'string') invalid(`${pairAt}[${j}]`, 'expected a string');
+    }
+  }
+  object(evidence.headers, ['x-apc-fixture'], ['x-apc-fixture'], `${at}.headers`);
+  if (evidence.headers['x-apc-fixture'] !== null && typeof evidence.headers['x-apc-fixture'] !== 'string') {
+    invalid(`${at}.headers.x-apc-fixture`, 'expected a string or null');
+  }
+}
+
 export function observationKey(value) {
   return `${value.kind}:${['skill', 'skill-discovery'].includes(value.kind) ? value.skill : value.server}`;
 }
@@ -71,7 +102,7 @@ export function validateInput(input, { recording = false } = {}) {
   const runtime = new Map();
   const skills = new Map();
   let nestedDiscovery;
-  let http;
+  const http = new Map();
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
     object(observation, ['kind', 'server', 'evidence', 'skill', 'marker', 'serverHealthCheck', 'advertised'], ['kind'], at);
@@ -80,29 +111,10 @@ export function validateInput(input, { recording = false } = {}) {
       const fields = ['kind', 'server', 'evidence', ...(recording ? [] : ['serverHealthCheck'])];
       object(observation, fields, fields, at);
       if (!recording) member(observation.serverHealthCheck, ['passed', 'failed'], `${at}.serverHealthCheck`);
-      member(observation.server, ['http'], `${at}.server`);
-      if (http !== undefined) invalid(at, 'duplicate mcp-streamable-http observation: http');
-      http = observation;
-      if (http.evidence === null) continue;
-      const evidenceAt = `${at}.evidence`;
-      const evidence = observation.evidence;
-      const keys = ['version', 'pathname', 'query', 'headers'];
-      object(evidence, keys, keys, evidenceAt);
-      if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
-      if (typeof evidence.pathname !== 'string') invalid(`${evidenceAt}.pathname`, 'expected a string');
-      array(evidence.query, `${evidenceAt}.query`);
-      for (const [i, pair] of evidence.query.entries()) {
-        const pairAt = `${evidenceAt}.query[${i}]`;
-        array(pair, pairAt);
-        if (pair.length !== 2) invalid(pairAt, 'expected a name and value pair');
-        for (const [j, value] of pair.entries()) {
-          if (typeof value !== 'string') invalid(`${pairAt}[${j}]`, 'expected a string');
-        }
-      }
-      object(evidence.headers, ['x-apc-fixture'], ['x-apc-fixture'], `${evidenceAt}.headers`);
-      if (evidence.headers['x-apc-fixture'] !== null && typeof evidence.headers['x-apc-fixture'] !== 'string') {
-        invalid(`${evidenceAt}.headers.x-apc-fixture`, 'expected a string or null');
-      }
+      member(observation.server, HTTP_SERVERS, `${at}.server`);
+      if (http.has(observation.server)) invalid(at, `duplicate mcp-streamable-http observation: ${observation.server}`);
+      http.set(observation.server, observation);
+      if (observation.evidence !== null) validateHttpEvidence(observation.evidence, `${at}.evidence`);
     } else if (observation.kind === 'mcp-stdio') {
       object(observation, ['kind', 'server', 'evidence'], ['kind', 'server', 'evidence'], at);
       member(observation.server, SERVERS, `${at}.server`);
@@ -172,8 +184,9 @@ export function buildReport(input) {
   const mismatch = (field, expected, observed) =>
     `${field}: expected ${JSON.stringify(expected)}; observed ${observed === undefined ? 'missing' : JSON.stringify(observed)}.`;
 
-  if (http?.evidence != null) {
-    const evidence = http.evidence;
+  const ordinaryHttp = http.get('http');
+  if (ordinaryHttp?.evidence?.type === 'request') {
+    const evidence = ordinaryHttp.evidence;
     set('mcp.streamable-http.tool-availability', 'pass', 'Valid runtime evidence supplied for the HTTP server.');
     const expectedPathname = '/conformance/mcp';
     const expectedQuery = [['value', '$APC_HTTP_VALUE']];
@@ -187,11 +200,41 @@ export function buildReport(input) {
       'The configured header value is preserved literally.', mismatch('x-apc-fixture header', expectedHeader, evidence.headers['x-apc-fixture']));
   }
 
-  if (http?.evidence === null) {
-    set('mcp.streamable-http.tool-availability', http.serverHealthCheck === 'passed' ? 'fail' : 'not_verified',
-      http.serverHealthCheck === 'passed'
-        ? 'The native attempt yielded no observation while the HTTP server health check passed.'
-        : 'The native attempt yielded no observation and the HTTP server health check failed.');
+  if (ordinaryHttp && ordinaryHttp.evidence?.type !== 'request') {
+    const healthPassed = ordinaryHttp.serverHealthCheck === 'passed';
+    const returnedError = ordinaryHttp.evidence?.type === 'error';
+    set('mcp.streamable-http.tool-availability', healthPassed ? 'fail' : 'not_verified',
+      returnedError
+        ? healthPassed
+          ? 'The native attempt returned an error while the HTTP server health check passed.'
+          : 'The native attempt returned an error and the HTTP server health check failed.'
+        : healthPassed
+          ? 'The native attempt yielded no observation while the HTTP server health check passed.'
+          : 'The native attempt yielded no observation and the HTTP server health check failed.');
+  }
+
+  const redirect = http.get('http-redirect');
+  if (redirect) {
+    const id = 'mcp.streamable-http.headers.cross-origin-redirect';
+    const evidence = redirect.evidence;
+    if (evidence === null) {
+      set(id, 'not_verified', 'The completed native attempt supplied no usable redirect evidence.');
+    } else if (evidence.type === 'error') {
+      set(id, evidence.classification === 'redirect-refused' ? 'pass' : 'not_verified',
+        evidence.classification === 'redirect-refused'
+          ? 'Agent reported an unambiguous native refusal to follow the cross-origin redirect; the exact error is preserved in the observation.'
+          : 'The native attempt returned an error that does not establish redirect refusal; the exact error is preserved in the observation.');
+    } else {
+      const expectedHeader = 'public redirect fixture value';
+      const sourceHeaders = evidence.query.filter(([name]) => name === 'sourceHeader').map(([, value]) => value);
+      if (sourceHeaders.length !== 1 || sourceHeaders[0] !== expectedHeader) {
+        set(id, 'not_verified', 'The redirect destination supplied no usable, unambiguous evidence that the source received the expected configured header.');
+      } else {
+        check(id, evidence.headers['x-apc-fixture'] === null,
+          'The redirected destination did not receive the configured header.',
+          'The redirected destination received the configured header without destination authorization.');
+      }
+    }
   }
 
   const missingSkills = Object.keys(CORE_SKILLS).filter((skill) => !skills.has(skill));
@@ -332,20 +375,23 @@ export function buildReport(input) {
           } } : {}),
         } };
       }),
-      ...(http === undefined ? [] : [{
-        kind: 'mcp-streamable-http', server: 'http',
-        evidence: http.evidence === null ? null : {
-          version: http.evidence.version, pathname: http.evidence.pathname,
-          query: http.evidence.query.map((pair) => [...pair]),
-          headers: { 'x-apc-fixture': http.evidence.headers['x-apc-fixture'] },
-        },
-        serverHealthCheck: http.serverHealthCheck,
-      }]),
+      ...HTTP_SERVERS.filter((server) => http.has(server)).map((server) => {
+        const observation = http.get(server);
+        const evidence = observation.evidence === null ? null : observation.evidence.type === 'error'
+          ? { type: 'error', message: observation.evidence.message, classification: observation.evidence.classification }
+          : {
+              type: 'request', version: observation.evidence.version, pathname: observation.evidence.pathname,
+              query: observation.evidence.query.map((pair) => [...pair]),
+              headers: { 'x-apc-fixture': observation.evidence.headers['x-apc-fixture'] },
+            };
+        return { kind: 'mcp-streamable-http', server, evidence, serverHealthCheck: observation.serverHealthCheck };
+      }),
     ],
     results: ordered,
     summary,
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
+      'HTTP error classifications are the agent’s interpretation of the preserved native diagnostic.',
       'Null HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
       'Skill markers and discovery observations are agent assertions about client-loaded skills and advertised availability, not independent proof.',
       'Directory comparisons use normalized absolute paths under the producing operating system path rules and data paths resolved by the probes; the reporter performs no filesystem lookup.',

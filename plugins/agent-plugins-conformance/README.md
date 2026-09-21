@@ -71,7 +71,7 @@ The three statuses mean:
 
 For example, Core skill discovery passes when both reported markers match and the agent records that the nested `conformance-nested` reference was not advertised as a separate skill. A wrong marker or advertisement of the nested skill fails the check; missing required evidence leaves it `not_verified`. The reporter trusts the collecting agent's account of client discovery; matching markers do not independently prove how a skill was loaded.
 
-An unsuccessful HTTP discovery or call attempt fails the availability check only when the reporter confirms that the HTTP server is healthy; otherwise it remains `not_verified`.
+An unsuccessful attempt on Core's `http` server fails the availability check only when the reporter confirms that the HTTP server is healthy; otherwise it remains `not_verified`.
 
 ### Choose required checks
 
