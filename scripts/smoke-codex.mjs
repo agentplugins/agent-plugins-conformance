@@ -15,11 +15,9 @@ const reportPath = join(output, 'report.json');
 const [codex, ...extra] = process.argv.slice(2);
 assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
-const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance'];
-const servers = ['default', 'relative', 'root', 'data', 'http'];
-const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.streamable-http.') || (id.startsWith('mcp.stdio.')
-  && id !== 'mcp.stdio.data.distinct-across-plugins'
-  && !id.startsWith('mcp.stdio.recovery.')));
+const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
+const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
+const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.'));
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
@@ -205,7 +203,7 @@ try {
   for (const id of coveredCases) {
     assert.equal(report.results.find((result) => result.id === id)?.status, 'pass', `${id} did not pass`);
   }
-  console.log(`Native Codex smoke passed: ${coveredCases.length} Core stdio and HTTP cases; ${report.summary.not_verified} not verified.`);
+  console.log(`Native Codex smoke passed: ${coveredCases.length} Core and Recovery MCP cases; ${report.summary.not_verified} not verified.`);
   console.log(`Report: ${reportPath}`);
 } catch (error) {
   console.error(`Native Codex smoke failed: ${error.message}`);
