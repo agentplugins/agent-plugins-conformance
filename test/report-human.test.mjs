@@ -21,6 +21,7 @@ function input() {
             APC_EXPANSION: `${root}|${data}|${root}`, APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}' },
         },
       })),
+      { kind: 'skill-discovery', skill: 'conformance-nested', advertised: false },
     ],
   };
 }
