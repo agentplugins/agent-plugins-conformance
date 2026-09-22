@@ -80,6 +80,14 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-unknown-field'],
     conformanceUnknown: true,
   });
+  assert.deepEqual(mcp.mcpServers['recovery-env-plugin-root'], {
+    type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-env-plugin-root'],
+    env: { PLUGIN_ROOT: '${PLUGIN_ROOT}' },
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-env-plugin-data'], {
+    type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-env-plugin-data'],
+    env: { PLUGIN_DATA: '${PLUGIN_DATA}' },
+  });
   assert.deepEqual(mcp.mcpServers['recovery-http-fragment'], {
     type: 'streamable-http',
     url: 'http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment',
@@ -96,9 +104,27 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.equal(relative(dataRoot, resolve(dataEscape)), '..');
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) =>
-    ['/mcpServers/recovery-invalid', '/mcpServers/recovery-unknown-field'].some((prefix) => instancePath.startsWith(prefix))),
+    ['/mcpServers/recovery-invalid', '/mcpServers/recovery-unknown-field',
+      '/mcpServers/recovery-env-plugin-root', '/mcpServers/recovery-env-plugin-data']
+      .some((prefix) => instancePath.startsWith(prefix))),
     JSON.stringify(validateMcp.errors));
   assert.ok(validateMcp.errors.some(({ keyword, params }) => keyword === 'required' && params.missingProperty === 'command'));
+  assert.deepEqual(validateMcp.errors.filter(({ keyword }) => keyword === 'propertyNames')
+    .map(({ instancePath, params }) => [instancePath, params.propertyName]), [
+    ['/mcpServers/recovery-env-plugin-root/env', 'PLUGIN_ROOT'],
+    ['/mcpServers/recovery-env-plugin-data/env', 'PLUGIN_DATA'],
+  ]);
+  for (const [server, reserved] of [
+    ['recovery-env-plugin-root', 'PLUGIN_ROOT'],
+    ['recovery-env-plugin-data', 'PLUGIN_DATA'],
+  ]) {
+    const isolated = { $schema: mcp.$schema, mcpServers: { [server]: structuredClone(mcp.mcpServers[server]) } };
+    assert.equal(validateMcp(isolated), false);
+    assert.deepEqual(validateMcp.errors.filter(({ keyword }) => keyword === 'propertyNames')
+      .map(({ params }) => params.propertyName), [reserved]);
+    delete isolated.mcpServers[server].env[reserved];
+    assert.equal(validateMcp(isolated), true, JSON.stringify(validateMcp.errors));
+  }
   const schemaValidMcp = structuredClone(mcp);
   delete schemaValidMcp.mcpServers['recovery-invalid'];
   assert.equal(validateMcp(schemaValidMcp), false);
@@ -106,6 +132,8 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     instancePath === '/mcpServers/recovery-unknown-field' && keyword === 'additionalProperties' &&
     params.additionalProperty === 'conformanceUnknown'));
   delete schemaValidMcp.mcpServers['recovery-unknown-field'].conformanceUnknown;
+  delete schemaValidMcp.mcpServers['recovery-env-plugin-root'].env.PLUGIN_ROOT;
+  delete schemaValidMcp.mcpServers['recovery-env-plugin-data'].env.PLUGIN_DATA;
   assert.equal(validateMcp(schemaValidMcp), true, JSON.stringify(validateMcp.errors));
 });
 

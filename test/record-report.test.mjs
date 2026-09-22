@@ -40,6 +40,8 @@ const invalidServerCases = [
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
   ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
+  ['recovery-env-plugin-root', 'mcp.stdio.env.reserved-plugin-root'],
+  ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
 ];
 const invalidHttpServerCases = [
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],

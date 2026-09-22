@@ -44,6 +44,8 @@ const invalidServerCases = [
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
   ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
+  ['recovery-env-plugin-root', 'mcp.stdio.env.reserved-plugin-root'],
+  ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
 ];
 const invalidHttpServerCases = [
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
@@ -53,7 +55,7 @@ const invalidHttpServerCases = [
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 13, total: 29 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 15, total: 31 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -66,19 +68,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 13, total: 29 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 15, total: 31 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 27, total: 29 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 29, total: 31 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 10, total: 29 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 12, total: 31 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -98,7 +100,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 29, total: 29 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 31, total: 31 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -109,7 +111,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 27, total: 29 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 29, total: 31 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -124,11 +126,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 29, total: 29 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 31, total: 31 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 26);
+  assert.equal(mcp.length, 28);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
@@ -381,7 +383,9 @@ test('invalid server identities canonicalize separately and preserve existing re
   const recoveryRuntime = recoveryObservations()[1];
   const discoveries = invalidServerCases.map(([server]) => invalidServerDiscovery(server, false));
   const invalidRuntimes = invalidServerCases.map(([server], index) => invalidServerRuntime(server, '/plugins/recovery', index ? '/state' : '/plugins'));
-  const observations = [invalidRuntimes[1], discoveries[0], recoveryRuntime, invalidRuntimes[2], invalidRuntimes[0], discoveries[1], discoveries[2]];
+  const observations = [
+    ...invalidRuntimes.toReversed(), discoveries[0], recoveryRuntime, ...discoveries.slice(1).toReversed(),
+  ];
   const report = buildReport({ schemaVersion: 1, observations });
   assert.deepEqual(report.observations, [...discoveries, recoveryRuntime, ...invalidRuntimes]);
   for (const [, id] of invalidServerCases) assert.equal(result(report, id).status, 'fail');
@@ -391,7 +395,8 @@ test('invalid server identities canonicalize separately and preserve existing re
   invalidRuntimes[0].evidence.cwd = '/changed-after-report';
   discoveries[0].advertised = true;
   assert.equal(report.observations[0].advertised, false);
-  assert.equal(report.observations[4].evidence.cwd, '/plugins');
+  assert.equal(report.observations.find(({ kind, server }) =>
+    kind === 'mcp-stdio' && server === 'recovery-cwd-escape').evidence.cwd, '/plugins');
 
   const before = buildReport({ schemaVersion: 1, observations: [recoveryRuntime] });
   const after = buildReport({ schemaVersion: 1, observations: [recoveryRuntime, ...invalidServerCases.map(([server]) => invalidServerDiscovery(server, false))] });
@@ -500,7 +505,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 9, total: 29 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 11, total: 31 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));

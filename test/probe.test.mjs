@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 14);
+  assert.equal(direct.summary.not_verified, 16);
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
@@ -116,13 +116,19 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   const configs = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers;
   const connectRecovery = async (serverName, { cwd = resolvedRoot, pluginData } = {}) => {
     const config = configs[serverName];
+    const variables = { PLUGIN_ROOT: root, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) };
+    const configuredEnv = Object.fromEntries(Object.entries(config.env ?? {}).map(([name, value]) => [
+      name,
+      value.replaceAll('${PLUGIN_ROOT}', root)
+        .replaceAll('${PLUGIN_DATA}', pluginData ?? '${PLUGIN_DATA}'),
+    ]));
     const client = new Client({ name: 'conformance-recovery-reference-test', version: '1' });
     clients.push(client);
     await client.connect(new StdioClientTransport({
       command: process.execPath,
       args: config.args.map((argument) => argument.replaceAll('${PLUGIN_ROOT}', root)),
       cwd,
-      env: { PLUGIN_ROOT: root, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) },
+      env: { ...variables, ...configuredEnv },
       stderr: 'pipe',
     }));
     return client;
@@ -185,6 +191,17 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   assert.deepEqual(unknownFieldObservation, expectedInvalid('recovery-unknown-field', resolvedRoot));
   assert.equal(buildReport(input([unknownFieldObservation])).results
     .find(({ id }) => id === 'mcp.stdio.config.unknown-field').status, 'fail');
+
+  for (const [server, id] of [
+    ['recovery-env-plugin-root', 'mcp.stdio.env.reserved-plugin-root'],
+    ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
+  ]) {
+    const reservedEnv = await connectRecovery(server, { pluginData: alias });
+    await inspectInvalidTool(reservedEnv, server);
+    const reservedEnvObservation = await observe(reservedEnv);
+    assert.deepEqual(reservedEnvObservation, expectedInvalid(server, resolvedRoot));
+    assert.equal(buildReport(input([reservedEnvObservation])).results.find((result) => result.id === id).status, 'fail');
+  }
 });
 
 test('actual process deviations are evaluated as failures, not missing evidence', { timeout: 30_000 }, async (t) => {
