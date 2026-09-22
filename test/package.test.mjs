@@ -101,6 +101,10 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     url: 'http://127.0.0.1:43187/conformance/recovery-http-duplicate-headers',
     headers: { 'X-Apc-Duplicate': 'first', 'x-apc-duplicate': 'second' },
   });
+  assert.deepEqual(mcp.mcpServers['recovery-http-userinfo'], {
+    type: 'streamable-http',
+    url: 'http://fixture:fixture@127.0.0.1:43187/conformance/recovery-http-userinfo',
+  });
   const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
   const escapeLink = resolve(recoveryRoot, 'escape-link');
   assert.equal((await lstat(escapeLink)).isSymbolicLink(), true);

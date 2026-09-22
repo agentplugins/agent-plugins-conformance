@@ -13,6 +13,7 @@ const INVALID_STDIO_SERVERS = Object.freeze({
 });
 const INVALID_HTTP_SERVERS = Object.freeze({
   'recovery-http-fragment': 'mcp.streamable-http.url.fragment',
+  'recovery-http-userinfo': 'mcp.streamable-http.url.userinfo',
   'recovery-http-duplicate-headers': 'mcp.streamable-http.headers.duplicate-names',
 });
 const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);

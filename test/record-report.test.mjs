@@ -48,6 +48,7 @@ const invalidServerCases = [
 const invalidHttpServerCases = [
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
   ['recovery-http-duplicate-headers', 'mcp.streamable-http.headers.duplicate-names'],
+  ['recovery-http-userinfo', 'mcp.streamable-http.url.userinfo'],
 ];
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({
@@ -373,7 +374,9 @@ test('invalid HTTP discovery and runtime records replace independently and use r
   report = await f.read();
   assert.equal(await health.calls(), ++calls);
   assert.equal(report.results.find((item) => item.id === failedId).status, 'fail');
-  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+  for (const [, id] of invalidHttpServerCases.slice(1)) {
+    assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  }
   assert.equal(report.observations.find(({ kind, server }) =>
     kind === 'mcp-streamable-http' && server === failedServer).serverHealthCheck, 'passed');
 
@@ -391,7 +394,9 @@ test('invalid HTTP discovery and runtime records replace independently and use r
     serverHealthCheck: 'failed',
   });
   assert.equal(report.results.find((item) => item.id === failedId).status, 'not_verified');
-  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+  for (const [, id] of invalidHttpServerCases.slice(1)) {
+    assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  }
 
   assert.equal(health.run({ action: 'record', observation: invalidHttp(failedServer, null) }).status, 0);
   report = await f.read();
@@ -401,7 +406,9 @@ test('invalid HTTP discovery and runtime records replace independently and use r
     ...invalidHttp(failedServer, null), serverHealthCheck: 'failed',
   });
   assert.equal(report.results.find((item) => item.id === failedId).status, 'not_verified');
-  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+  for (const [, id] of invalidHttpServerCases.slice(1)) {
+    assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  }
 });
 
 test('malformed invalid HTTP runtime records fail before health or report mutation', async (t) => {

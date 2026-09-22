@@ -19059,6 +19059,7 @@ var port = 43187;
 var pathname = "/conformance/mcp";
 var url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 var recoveryRoutes = /* @__PURE__ */ new Map([
+  ["/conformance/recovery-http-userinfo", "recovery-http-userinfo"],
   ["/conformance/recovery-http-fragment", "recovery-http-fragment"],
   ["/conformance/recovery-http-duplicate-headers", "recovery-http-duplicate-headers"]
 ]);

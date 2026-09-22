@@ -199,7 +199,7 @@ try {
   const advertisedInvalidServers = [];
   for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
-    'recovery-http-fragment', 'recovery-http-duplicate-headers']) {
+    'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers']) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
     const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
