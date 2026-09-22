@@ -15,6 +15,8 @@ const INVALID_HTTP_SERVERS = Object.freeze({
   'recovery-http-fragment': 'mcp.streamable-http.url.fragment',
   'recovery-http-userinfo': 'mcp.streamable-http.url.userinfo',
   'recovery-http-duplicate-headers': 'mcp.streamable-http.headers.duplicate-names',
+  'recovery-http-header-name': 'mcp.streamable-http.headers.invalid-name',
+  'recovery-http-header-value': 'mcp.streamable-http.headers.invalid-value',
 });
 const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];

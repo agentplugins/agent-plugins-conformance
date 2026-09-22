@@ -29,6 +29,8 @@ export const CASES = Object.freeze([
   ['mcp.streamable-http.url.fragment', 'HTTP URL fragment exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.url.userinfo', 'HTTP URL user information exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.headers.duplicate-names', 'Case-insensitive duplicate HTTP header exclusion', ['7.2.1', '7.2.2']],
+  ['mcp.streamable-http.headers.invalid-name', 'Invalid HTTP header name exclusion', ['7.2.1', '7.2.2']],
+  ['mcp.streamable-http.headers.invalid-value', 'Invalid HTTP header value exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.url.literal-route-and-query', 'Streamable HTTP literal URL route and query', ['7.2.1']],
   ['mcp.streamable-http.headers.cross-origin-redirect', 'Configured headers across origins on redirect', ['7.2.1']],
   ['mcp.streamable-http.headers.literal-value', 'Streamable HTTP literal header value', ['7.2.1']],
