@@ -26,8 +26,9 @@ const mcp = () => ({
 const recoverySkill = (marker = 'APC_RECOVERY_VALID_V1') => ({
   kind: 'skill', skill: 'conformance-recovery-valid', marker,
 });
-const recoveryMcp = () => ({
-  kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData: '/recovery-data' },
+const recoveryMcp = (symlinkCwd = 'symlink') => ({
+  kind: 'mcp-stdio', server: 'recovery-valid',
+  evidence: { version: 1, server: 'recovery-valid', resolvedData: '/recovery-data', symlinkCwd },
 });
 const invalidServerRuntime = (server = 'recovery-cwd-escape', root = '/recovery-plugin', cwd = '/parent') => ({
   kind: 'mcp-stdio', server,
@@ -39,6 +40,7 @@ const invalidServerDiscovery = (server = 'recovery-cwd-escape', advertised = fal
 const invalidServerCases = [
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
+  ['recovery-cwd-symlink-escape', 'filesystem.containment.cwd-symlink-escape'],
   ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
   ['recovery-env-plugin-root', 'mcp.stdio.env.reserved-plugin-root'],
   ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
@@ -329,6 +331,29 @@ test('invalid server identities persist and replace under separate recorder keys
   assert.equal(report.results.find((item) => item.id === 'mcp.stdio.config.unknown-field').status, 'fail');
 });
 
+test('symlink cwd recovery state replaces canonically and gates an absent target', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  const server = 'recovery-cwd-symlink-escape';
+  const id = 'filesystem.containment.cwd-symlink-escape';
+  f.record(invalidServerDiscovery(server, false));
+  for (const [symlinkCwd, status] of [
+    ['other', 'not_verified'], ['missing', 'pass'], [null, 'not_verified'], ['symlink', 'pass'],
+  ]) {
+    f.record(recoveryMcp(symlinkCwd));
+    const report = await f.read();
+    assert.equal(report.results.find((item) => item.id === id).status, status);
+    assert.deepEqual(report.observations.find(({ server: observed }) => observed === 'recovery-valid'),
+      recoveryMcp(symlinkCwd));
+  }
+  const oldRecovery = recoveryMcp();
+  delete oldRecovery.evidence.symlinkCwd;
+  f.record(oldRecovery);
+  const oldReport = await f.read();
+  assert.equal(oldReport.results.find((item) => item.id === id).status, 'not_verified');
+  assert.deepEqual(oldReport.observations.find(({ server: observed }) => observed === 'recovery-valid'), oldRecovery);
+});
+
 test('invalid HTTP discovery and runtime records replace independently and use reporter health', async (t) => {
   const f = await fixture(t);
   const health = await mockHealth(f);
@@ -406,7 +431,7 @@ test('record preserves a cleanup warning while keeping successful writability pa
   f.record(observation);
 
   const report = await f.read();
-  const writable = report.results.find(({ id }) => id === 'mcp.stdio.data.writable');
+  const writable = report.results.find(({ id }) => id === 'filesystem.data.writable');
   assert.equal(writable.status, 'pass');
   assert.equal(typeof writable.warning, 'string');
   assert.match(writable.warning, /\/data\/\.agent-plugins-conformance-write-test/);

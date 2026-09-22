@@ -6,6 +6,7 @@ const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-cwd-escape': 'mcp.stdio.cwd.plugin-relative-escape',
   'recovery-cwd-data-escape': 'mcp.stdio.cwd.plugin-data-escape',
+  'recovery-cwd-symlink-escape': 'filesystem.containment.cwd-symlink-escape',
   'recovery-unknown-field': 'mcp.stdio.config.unknown-field',
   'recovery-env-plugin-root': 'mcp.stdio.env.reserved-plugin-root',
   'recovery-env-plugin-data': 'mcp.stdio.env.reserved-plugin-data',
@@ -141,7 +142,7 @@ export function validateInput(input, { recording = false } = {}) {
           ? ['version', 'server', 'root', 'cwd']
           : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
-      object(evidence, keys, keys, evidenceAt);
+      object(evidence, observation.server === 'recovery-valid' ? [...keys, 'symlinkCwd'] : keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
       if (INVALID_STDIO_SERVER_NAMES.includes(observation.server)) {
@@ -157,6 +158,9 @@ export function validateInput(input, { recording = false } = {}) {
         if (!pathFlavor(evidence.resolvedData)) invalid(`${evidenceAt}.resolvedData`, 'expected null or an absolute POSIX or Windows path');
       }
       if (observation.server === 'recovery-valid') {
+        if (Object.hasOwn(evidence, 'symlinkCwd') && evidence.symlinkCwd !== null) {
+          member(evidence.symlinkCwd, ['symlink', 'missing', 'other'], `${evidenceAt}.symlinkCwd`);
+        }
         runtime.set(observation.server, evidence);
         continue;
       }
@@ -316,7 +320,14 @@ export function buildReport(input) {
     } else if (advertised === true) {
       set(id, 'fail', `Agent reported the ${server} observe tool advertised by the client.`);
     } else if (advertised === false && runtime.has('recovery-valid')) {
-      set(id, 'pass', `Agent reported the ${server} tool absent from the client inventory while recovery-valid runtime evidence was available.`);
+      const symlinkCwd = runtime.get('recovery-valid').symlinkCwd;
+      if (server === 'recovery-cwd-symlink-escape' && !['symlink', 'missing'].includes(symlinkCwd)) {
+        set(id, 'not_verified', symlinkCwd === 'other'
+          ? 'The installed working-directory fixture is not a symlink; symlink containment was not verified.'
+          : 'The installed working-directory fixture could not be inspected; symlink containment was not verified.');
+      } else {
+        set(id, 'pass', `Agent reported the ${server} tool absent from the client inventory while recovery-valid runtime evidence was available.`);
+      }
     } else if (advertised === false) {
       set(id, 'not_verified',
         `Agent reported the ${server} tool absent, but recovery-valid runtime evidence is missing.`);
@@ -351,7 +362,7 @@ export function buildReport(input) {
   const recoveryData = runtime.get('recovery-valid')?.resolvedData;
   const sharedData = coreData.filter(([, data]) => recoveryData != null && samePath(data, recoveryData, pathFlavor(data)));
   const missingData = [...(coreData.length ? [] : missingCoreData), ...(recoveryData == null ? ['recovery-valid'] : [])];
-  set('mcp.stdio.data.distinct-across-plugins', sharedData.length ? 'fail' : missingData.length ? 'not_verified' : 'pass',
+  set('filesystem.data.distinct-across-plugins', sharedData.length ? 'fail' : missingData.length ? 'not_verified' : 'pass',
     sharedData.length
       ? `Core servers ${sharedData.map(([server]) => server).join(', ')} and recovery-valid resolved PLUGIN_DATA to the same path: ${JSON.stringify(recoveryData)}.`
       : missingData.length
@@ -361,7 +372,7 @@ export function buildReport(input) {
   const [firstCoreData, ...otherCoreData] = coreData;
   const inconsistentData = firstCoreData
     ? otherCoreData.filter(([, data]) => !samePath(data, firstCoreData[1], pathFlavor(firstCoreData[1]))) : [];
-  set('mcp.stdio.data.consistent-within-plugin', inconsistentData.length ? 'fail' : missingCoreData.length ? 'not_verified' : 'pass',
+  set('filesystem.data.consistent-within-plugin', inconsistentData.length ? 'fail' : missingCoreData.length ? 'not_verified' : 'pass',
     inconsistentData.length
       ? [firstCoreData, ...inconsistentData].map(([server, data]) => `${server} resolved PLUGIN_DATA to ${JSON.stringify(data)}.`).join(' ')
       : missingCoreData.length
@@ -377,7 +388,7 @@ export function buildReport(input) {
       'PLUGIN_DATA is an absolute path for the producing operating system.',
       `PLUGIN_DATA: expected an absolute ${flavor === path.win32 ? 'Windows' : 'POSIX'} path; observed ${env.PLUGIN_DATA === undefined ? 'missing' : JSON.stringify(env.PLUGIN_DATA)}.`);
     const write = evidence.dataWrite;
-    const writeCase = 'mcp.stdio.data.writable';
+    const writeCase = 'filesystem.data.writable';
     if (typeof env.PLUGIN_DATA !== 'string' || !flavor.isAbsolute(env.PLUGIN_DATA)) {
       set(writeCase, 'not_verified', 'No write attempted; an absolute PLUGIN_DATA path is required.');
     } else if (write === null) {
@@ -430,7 +441,10 @@ export function buildReport(input) {
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
         if (server === 'recovery-valid') {
-          return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData } };
+          return { kind: 'mcp-stdio', server, evidence: {
+            version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData,
+            ...(Object.hasOwn(evidence, 'symlinkCwd') ? { symlinkCwd: evidence.symlinkCwd } : {}),
+          } };
         }
         if (INVALID_STDIO_SERVER_NAMES.includes(server)) {
           return { kind: 'mcp-stdio', server, evidence: {

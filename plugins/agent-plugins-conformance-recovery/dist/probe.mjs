@@ -7200,8 +7200,8 @@ var require_dist = __commonJS({
 });
 
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
-import { realpathSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
@@ -16939,11 +16939,19 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
 var identity = [
   "recovery-cwd-escape",
   "recovery-cwd-data-escape",
+  "recovery-cwd-symlink-escape",
   "recovery-unknown-field",
   "recovery-env-plugin-root",
   "recovery-env-plugin-data"
 ].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
+function inspectSymlinkCwd() {
+  try {
+    return lstatSync(join(root, "escape-link")).isSymbolicLink() ? "symlink" : "other";
+  } catch (error2) {
+    return error2.code === "ENOENT" ? "missing" : null;
+  }
+}
 var server = new Server(
   { name: `agent-plugins-conformance-${identity}`, version: "0.1.0" },
   { capabilities: { tools: {} } }
@@ -16962,7 +16970,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
       throw new Error("observe requires an empty object");
     }
-    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData } } : {
+    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, symlinkCwd: inspectSymlinkCwd() } } : {
       kind: "mcp-stdio",
       server: identity,
       evidence: {

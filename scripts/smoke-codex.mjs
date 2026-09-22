@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -18,7 +18,7 @@ assert.ok(codex && isAbsolute(codex) && extra.length === 0,
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
 const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
-const coveredCases = CASE_IDS.filter((id) => id.startsWith('mcp.') &&
+const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
   id !== 'mcp.streamable-http.headers.cross-origin-redirect');
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
 const home = join(temporary, 'codex-home');
@@ -50,10 +50,12 @@ function run(binary, args, input) {
 
 async function hashes(directory) {
   const files = (await readdir(directory, { recursive: true, withFileTypes: true }))
-    .filter((entry) => entry.isFile())
-    .map((entry) => join(entry.parentPath, entry.name)).sort();
-  return Promise.all(files.map(async (path) => [relative(directory, path),
-    createHash('sha256').update(await readFile(path)).digest('hex')]));
+    .filter((entry) => entry.isFile() || entry.isSymbolicLink())
+    .map((entry) => ({ path: join(entry.parentPath, entry.name), symlink: entry.isSymbolicLink() }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  return Promise.all(files.map(async ({ path, symlink }) => [relative(directory, path),
+    symlink ? 'symlink' : 'file',
+    symlink ? await readlink(path) : createHash('sha256').update(await readFile(path)).digest('hex')]));
 }
 
 function failProtocol(error) {
@@ -134,7 +136,7 @@ try {
   console.log(version);
   await writeFile(join(output, 'codex-version.txt'), `${version}\n`);
   for (const name of names) {
-    await cp(join(root, 'plugins', name), join(marketplace, 'plugins', name), { recursive: true });
+    await cp(join(root, 'plugins', name), join(marketplace, 'plugins', name), { recursive: true, verbatimSymlinks: true });
   }
   await writeFile(join(marketplace, '.agents/plugins/marketplace.json'), JSON.stringify({
     name: 'apc-native-smoke',
@@ -146,7 +148,15 @@ try {
   for (const name of names) {
     const { installedPath } = JSON.parse(run(codex, ['plugin', 'add', `${name}@apc-native-smoke`, '--json']));
     const original = await hashes(join(root, 'plugins', name));
-    assert.deepEqual(await hashes(installedPath), original, `${name}: installed package differs from source`);
+    const actual = await hashes(installedPath);
+    let expected = original;
+    if (name === 'agent-plugins-conformance-recovery') {
+      assert.deepEqual(original.find(([path]) => path === 'escape-link'), ['escape-link', 'symlink', '..'],
+        'The source fixture must contain the escaping symlink');
+      // Removing the escaping link during installation is an allowed containment outcome.
+      if (!actual.some(([path]) => path === 'escape-link')) expected = original.filter(([path]) => path !== 'escape-link');
+    }
+    assert.deepEqual(actual, expected, `${name}: installed package differs from source`);
     installed.push(installedPath);
   }
   const reporter = join(installed[1], 'skills/run-conformance/scripts/report.mjs');
@@ -187,13 +197,15 @@ try {
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
-  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field',
+  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-fragment', 'recovery-http-duplicate-headers']) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
+    const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
+      entry?.runtimeStatus === 'failed' && Object.keys(entry.tools).length === 0;
     if (advertised) advertisedInvalidServers.push(server);
-    if (advertised || !entry || (entry.runtimeStatus === 'connected' && entry.toolsError === null)) {
+    if (advertised || !entry || symlinkStartupFailure || (entry.runtimeStatus === 'connected' && entry.toolsError === null)) {
       record({ action: 'record', observation: { kind: 'mcp-discovery', server, advertised } });
     }
   }
@@ -217,7 +229,7 @@ try {
   for (const id of coveredCases) {
     assert.equal(report.results.find((result) => result.id === id)?.status, 'pass', `${id} did not pass`);
   }
-  console.log(`Native Codex smoke passed: ${coveredCases.length} Core and Recovery MCP cases; ${report.summary.not_verified} not verified.`);
+  console.log(`Native Codex smoke passed: ${coveredCases.length} Core and Recovery cases; ${report.summary.not_verified} not verified.`);
   console.log(`Report: ${reportPath}`);
 } catch (error) {
   console.error(`Native Codex smoke failed: ${error.message}`);

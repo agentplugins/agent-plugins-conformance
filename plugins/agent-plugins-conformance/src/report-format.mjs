@@ -64,11 +64,12 @@ export function formatReport(report) {
   ];
   const groups = new Map();
   for (const result of report.results) {
-    const group = result.id.startsWith('skills.') ? 'Skills' : result.id.startsWith('mcp.') ? 'MCP' : 'Other';
+    const group = result.id.startsWith('skills.') ? 'Skills' : result.id.startsWith('mcp.') ? 'MCP'
+      : result.id.startsWith('filesystem.') ? 'Filesystem' : 'Other';
     if (!groups.has(group)) groups.set(group, { pass: 0, fail: 0, not_verified: 0 });
     groups.get(group)[result.status] += 1;
   }
-  for (const group of ['Skills', 'MCP', 'Other']) {
+  for (const group of ['Skills', 'MCP', 'Filesystem', 'Other']) {
     if (groups.has(group)) lines.push(row(group, groups.get(group)));
   }
   lines.push(row('Total', report.summary));
