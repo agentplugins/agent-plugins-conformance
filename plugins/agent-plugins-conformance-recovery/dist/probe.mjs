@@ -16936,7 +16936,7 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   } catch {
   }
 }
-var identity = ["recovery-cwd-escape", "recovery-cwd-data-escape"].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
+var identity = ["recovery-cwd-escape", "recovery-cwd-data-escape", "recovery-unknown-field"].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var server = new Server(
   { name: `agent-plugins-conformance-${identity}`, version: "0.1.0" },

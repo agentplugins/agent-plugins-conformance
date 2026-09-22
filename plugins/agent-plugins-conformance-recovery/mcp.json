@@ -20,6 +20,12 @@
       "command": "node",
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-cwd-data-escape"],
       "cwd": "${PLUGIN_DATA}/.."
+    },
+    "recovery-unknown-field": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-unknown-field"],
+      "conformanceUnknown": true
     }
   }
 }

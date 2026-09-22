@@ -94,10 +94,10 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 11);
+  assert.equal(direct.summary.not_verified, 12);
 });
 
-test('copied recovery plugin serves exact valid and cwd observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
+test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
   const parent = await mkdtemp(join(tmpdir(), 'agent-plugins-conformance-recovery-'));
   const root = join(parent, 'copied recovery plugin');
   const data = join(parent, 'recovery data');
@@ -151,11 +151,11 @@ test('copied recovery plugin serves exact valid and cwd observations without run
   assert.equal(buildReport(input([unavailableObservation])).results
     .find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
-  const expectedEscape = (server, cwd) => ({
+  const expectedInvalid = (server, cwd) => ({
     kind: 'mcp-stdio', server,
     evidence: { version: 1, server, root: resolvedRoot, cwd },
   });
-  const inspectEscapeTool = async (client, server) => {
+  const inspectInvalidTool = async (client, server) => {
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(({ name }) => name), ['observe']);
     assert.match(tools[0].description, new RegExp(`${server} fixture server`));
@@ -166,18 +166,25 @@ test('copied recovery plugin serves exact valid and cwd observations without run
   };
 
   const outside = await connectRecovery('recovery-cwd-escape', { cwd: outsideCwd });
-  await inspectEscapeTool(outside, 'recovery-cwd-escape');
-  assert.deepEqual(await observe(outside), expectedEscape('recovery-cwd-escape', outsideCwd));
+  await inspectInvalidTool(outside, 'recovery-cwd-escape');
+  assert.deepEqual(await observe(outside), expectedInvalid('recovery-cwd-escape', outsideCwd));
 
   const clamped = await connectRecovery('recovery-cwd-escape');
-  assert.deepEqual(await observe(clamped), expectedEscape('recovery-cwd-escape', resolvedRoot));
+  assert.deepEqual(await observe(clamped), expectedInvalid('recovery-cwd-escape', resolvedRoot));
 
   const outsideData = await connectRecovery('recovery-cwd-data-escape', { cwd: outsideCwd, pluginData: alias });
-  await inspectEscapeTool(outsideData, 'recovery-cwd-data-escape');
-  assert.deepEqual(await observe(outsideData), expectedEscape('recovery-cwd-data-escape', outsideCwd));
+  await inspectInvalidTool(outsideData, 'recovery-cwd-data-escape');
+  assert.deepEqual(await observe(outsideData), expectedInvalid('recovery-cwd-data-escape', outsideCwd));
 
   const clampedData = await connectRecovery('recovery-cwd-data-escape', { cwd: resolvedData, pluginData: alias });
-  assert.deepEqual(await observe(clampedData), expectedEscape('recovery-cwd-data-escape', resolvedData));
+  assert.deepEqual(await observe(clampedData), expectedInvalid('recovery-cwd-data-escape', resolvedData));
+
+  const unknownField = await connectRecovery('recovery-unknown-field');
+  await inspectInvalidTool(unknownField, 'recovery-unknown-field');
+  const unknownFieldObservation = await observe(unknownField);
+  assert.deepEqual(unknownFieldObservation, expectedInvalid('recovery-unknown-field', resolvedRoot));
+  assert.equal(buildReport(input([unknownFieldObservation])).results
+    .find(({ id }) => id === 'mcp.stdio.config.unknown-field').status, 'fail');
 });
 
 test('actual process deviations are evaluated as failures, not missing evidence', { timeout: 30_000 }, async (t) => {
