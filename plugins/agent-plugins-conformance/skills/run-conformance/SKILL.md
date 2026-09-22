@@ -46,7 +46,7 @@ Run recording commands sequentially. Never submit recording commands together in
 }
 ```
 
-Replace `observation` with the complete observation just obtained. The script retains the other components' evidence, replaces any previous observation for the same skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
+Replace `observation` with the complete observation just obtained. The script retains the other evidence, replaces any previous observation of the same kind for that skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
 
 Collect all fixture skills and MCP tools through the client's normal mechanisms. The user or CI may start the optional HTTP server before client loading; do not start it or ask the user to start it during collection.
 
@@ -60,8 +60,17 @@ Collect all fixture skills and MCP tools through the client's normal mechanisms.
    }
    ```
 
-3. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, `http`, and `http-redirect`) and the Recovery fixture server `recovery-valid` through the client's normal MCP mechanism. Tool names may be client-namespaced. The HTTP tool descriptions identify their fixture server IDs (`http` or `http-redirect`); retain that association when calling each tool so that an error can be recorded for the same server. Call each available tool with `{}`. First inspect whether the client returned a successful MCP result or a native discovery/call error. For a native HTTP error, follow step 4 without parsing it as observation JSON. For a native stdio error, leave that server’s observation missing. For a successful result, take the observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly. The `http-redirect` tool redirects its request to another local origin; do not authorize forwarding configured headers to that destination.
-4. If a completed HTTP discovery or call attempt instead produces a native error, record it as error evidence:
+3. Inspect the client's MCP tool catalog for Recovery's `recovery-cwd-escape` server and its `observe` tool. Its description identifies the fixture server ID; names may be client-namespaced. Set `advertised` to `true` if the tool is advertised, even in a partial catalog, and record that before calling it. Set `advertised` to `false` only after a known attempt to load Recovery and a usable complete client inventory that excludes the tool, including any deferred tools. If startup or tool discovery for this server fails, or the load scope or inventory completeness is unknown, leave this observation missing unless the tool is advertised. A failed call or a guessed tool name does not establish absence. No rejection diagnostic is required. Record through the same reporter:
+
+   ```json
+   {
+     "action":"record",
+     "observation":{"kind":"mcp-discovery","server":"recovery-cwd-escape","advertised":false}
+   }
+   ```
+
+4. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, `http`, and `http-redirect`) and the Recovery fixture servers (`recovery-valid` and `recovery-cwd-escape`) through the client's normal MCP mechanism. Tool names may be client-namespaced. The HTTP tool descriptions identify their fixture server IDs (`http` or `http-redirect`); retain that association when calling each tool so that an error can be recorded for the same server. Call each available tool with `{}`. First inspect whether the client returned a successful MCP result or a native discovery/call error. For a native HTTP error, follow step 5 without parsing it as observation JSON. For a native stdio error, leave that server’s runtime observation missing; retain any discovery observation already recorded. For a successful result, take the observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly. The `http-redirect` tool redirects its request to another local origin; do not authorize forwarding configured headers to that destination.
+5. If a completed HTTP discovery or call attempt instead produces a native error, record it as error evidence:
 
 ```json
 {
@@ -80,7 +89,7 @@ Collect all fixture skills and MCP tools through the client's normal mechanisms.
 
 Use the fixture server ID whose observation you attempted to collect (`http` or `http-redirect`). Establish that identity from the discovery operation’s scope or the called tool; the error need not name the server. If one completed discovery operation covers both HTTP fixtures and fails for both, record the same error separately for each fixture. Do not assign an error to a fixture outside that operation’s scope. Copy the client’s complete original error diagnostic into `message` without summarizing or rewriting it. Do not substitute an error raised while parsing, transforming, or recording that diagnostic. Set `classification` to `"redirect-refused"` only when the error unambiguously establishes that the client refused to follow the redirect, such as rejecting the tool request's HTTP 307 response as an unexpected server response. A generic transport, connection, timeout, or unknown-tool error does not establish refusal; leave its classification `null`. Merely mentioning 307 is insufficient.
 
-5. If a completed HTTP discovery or call attempt produces neither an observation nor a native error, record `evidence: null` for each HTTP fixture whose observation you attempted to collect:
+6. If a completed HTTP discovery or call attempt produces neither an observation nor a native error, record `evidence: null` for each HTTP fixture whose observation you attempted to collect:
 
 ```json
 {
@@ -89,7 +98,7 @@ Use the fixture server ID whose observation you attempted to collect (`http` or 
 }
 ```
 
-For unavailable skill or stdio observations, or any skipped or interrupted attempt, leave the evidence missing and continue collecting the remaining components.
+For unavailable skill bodies or stdio runtime observations, or any skipped or interrupted attempt, leave that evidence missing and continue collecting the remaining components. Preserve any discovery observations already recorded.
 
 For every HTTP recording, the reporter checks the local fixture and adds `serverHealthCheck` to the saved observation. Do not supply this field yourself. Keep track of collection limitations for your final response and leave outcome decisions to the reporter.
 
@@ -97,7 +106,7 @@ A recording command failure means its observation was not successfully saved. Ad
 
 ## Finish collection
 
-When collection ends, give the absolute JSON report path and note any collection or recording limitations. Claim successful recording only for commands that succeeded. If initialization failed, do not claim a report was created for this run. The saved report represents the latest observation submitted for each component; its existence alone does not establish that collection finished.
+When collection ends, give the absolute JSON report path and note any collection or recording limitations. Expected fixture exclusions established under the discovery rules above are not collection limitations. Claim successful recording only for commands that succeeded. If initialization failed, do not claim a report was created for this run. The saved report represents the latest version of each recorded observation; its existence alone does not establish that collection finished.
 
 During normal completion, return only the path and limitations. Do not read the accumulated report into context or generate its summary unless the user asks. Users and CI can consume the JSON directly and choose which results to require. Preserve the evaluator's `pass`, `fail`, and `not_verified` statuses when discussing results. These results describe submitted evidence for covered cases, not client certification, and the evaluator trusts your account of how skills and tools were exposed.
 

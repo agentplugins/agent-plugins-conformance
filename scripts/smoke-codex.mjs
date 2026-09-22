@@ -185,7 +185,15 @@ try {
   });
   const status = await rpc('mcpServerStatus/list', { threadId: thread.id, detail: 'toolsAndAuthOnly' });
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
-  for (const server of servers) {
+  assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
+  const escape = status.data.find(({ name }) => name === 'recovery-cwd-escape');
+  const escapeAdvertised = escape !== undefined && Object.hasOwn(escape.tools, 'observe');
+  if (escapeAdvertised || !escape || (escape.runtimeStatus === 'connected' && escape.toolsError === null)) {
+    record({ action: 'record', observation: {
+      kind: 'mcp-discovery', server: 'recovery-cwd-escape', advertised: escapeAdvertised,
+    } });
+  }
+  for (const server of [...servers, ...(escapeAdvertised ? ['recovery-cwd-escape'] : [])]) {
     assert.equal(status.data.filter(({ name }) => name === server).length, 1,
       `${server}: expected one native MCP server`);
     const result = await rpc('mcpServer/tool/call', {

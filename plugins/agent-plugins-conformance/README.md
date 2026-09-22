@@ -19,7 +19,7 @@ When collection ends, the agent gives the report's absolute path and any collect
 
 ## Read the results
 
-The report contains `observations`, a flat `results` array, summary counts, and notes about the evidence. Each recording replaces the previous observation for that skill or server. Skipped or interrupted attempts leave evidence missing, as do unavailable skill and stdio observations.
+The report contains `observations`, a flat `results` array, summary counts, and notes about the evidence. Each recording replaces the previous observation of the same kind for that skill or server. Skipped or interrupted attempts leave evidence missing, as do unavailable skill bodies and stdio runtime observations.
 
 This abbreviated example shows three results and their summary counts; observations and notes are omitted.
 

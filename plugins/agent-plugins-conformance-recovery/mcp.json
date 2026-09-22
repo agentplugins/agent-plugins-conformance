@@ -8,6 +8,12 @@
       "type": "stdio",
       "command": "node",
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs"]
+    },
+    "recovery-cwd-escape": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-cwd-escape"],
+      "cwd": "./.."
     }
   }
 }

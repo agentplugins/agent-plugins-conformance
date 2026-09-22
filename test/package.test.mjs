@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
+import { relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 
@@ -67,13 +69,18 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.deepEqual(mcp.mcpServers['recovery-valid'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs'],
   });
+  assert.deepEqual(mcp.mcpServers['recovery-cwd-escape'], {
+    type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-escape'], cwd: './..',
+  });
+  const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
+  assert.equal(relative(recoveryRoot, resolve(recoveryRoot, mcp.mcpServers['recovery-cwd-escape'].cwd)), '..');
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) => instancePath.startsWith('/mcpServers/recovery-invalid')),
     JSON.stringify(validateMcp.errors));
   assert.ok(validateMcp.errors.some(({ keyword, params }) => keyword === 'required' && params.missingProperty === 'command'));
-  const validMcp = structuredClone(mcp);
-  delete validMcp.mcpServers['recovery-invalid'];
-  assert.equal(validateMcp(validMcp), true, JSON.stringify(validateMcp.errors));
+  const schemaValidMcp = structuredClone(mcp);
+  delete schemaValidMcp.mcpServers['recovery-invalid'];
+  assert.equal(validateMcp(schemaValidMcp), true, JSON.stringify(validateMcp.errors));
 });
 
 test('recovery fixture has one valid skill witness and one skill with malformed frontmatter', async () => {

@@ -94,10 +94,10 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 9);
+  assert.equal(direct.summary.not_verified, 10);
 });
 
-test('copied recovery plugin serves its exact observation without runtime dependencies', { timeout: 30_000 }, async (t) => {
+test('copied recovery plugin serves exact valid and cwd observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
   const parent = await mkdtemp(join(tmpdir(), 'agent-plugins-conformance-recovery-'));
   const root = join(parent, 'copied recovery plugin');
   const data = join(parent, 'recovery data');
@@ -105,43 +105,65 @@ test('copied recovery plugin serves its exact observation without runtime depend
   await cp(new URL('../plugins/agent-plugins-conformance-recovery', import.meta.url), root, { recursive: true });
   await mkdir(data);
   await symlink(data, alias, 'junction');
+  const resolvedRoot = await realpath(root);
   const resolvedData = await realpath(data);
+  const outsideCwd = await realpath(parent);
   const clients = [];
   t.after(async () => {
     try { await Promise.all(clients.map((client) => client.close())); } finally { await rm(parent, { recursive: true, force: true }); }
   });
   assert.equal((await readdir(root)).includes('node_modules'), false);
-  const config = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers['recovery-valid'];
-  const connectRecovery = async (pluginData) => {
+  const configs = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers;
+  const connectRecovery = async (serverName, { cwd = resolvedRoot, pluginData } = {}) => {
+    const config = configs[serverName];
     const client = new Client({ name: 'conformance-recovery-reference-test', version: '1' });
     clients.push(client);
     await client.connect(new StdioClientTransport({
       command: process.execPath,
       args: config.args.map((argument) => argument.replaceAll('${PLUGIN_ROOT}', root)),
-      cwd: root,
-      env: { PLUGIN_ROOT: root, PLUGIN_DATA: pluginData },
+      cwd,
+      env: { PLUGIN_ROOT: root, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) },
       stderr: 'pipe',
     }));
     return client;
   };
-  const client = await connectRecovery(alias);
+  const observe = async (client) => {
+    const response = await client.callTool({ name: 'observe', arguments: {} });
+    assert.equal(response.isError, undefined);
+    assert.deepEqual(JSON.parse(response.content[0].text), response.structuredContent);
+    return response.structuredContent;
+  };
+
+  const client = await connectRecovery('recovery-valid', { pluginData: alias });
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map(({ name }) => name), ['observe']);
-  const response = await client.callTool({ name: 'observe', arguments: {} });
+  const response = await observe(client);
   const observation = {
     kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData },
   };
-  assert.equal(response.isError, undefined);
-  assert.deepEqual(response.structuredContent, observation);
-  assert.deepEqual(JSON.parse(response.content[0].text), observation);
+  assert.deepEqual(response, observation);
   assert.equal(buildReport(input([observation])).results
     .find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
-  const unavailable = await connectRecovery(join(parent, 'missing data'));
-  const unavailableObservation = await unavailable.callTool({ name: 'observe', arguments: {} });
-  assert.equal(unavailableObservation.structuredContent.evidence.resolvedData, null);
-  assert.equal(buildReport(input([unavailableObservation.structuredContent])).results
+  const unavailable = await connectRecovery('recovery-valid', { pluginData: join(parent, 'missing data') });
+  const unavailableObservation = await observe(unavailable);
+  assert.equal(unavailableObservation.evidence.resolvedData, null);
+  assert.equal(buildReport(input([unavailableObservation])).results
     .find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
+
+  const expectedEscape = (cwd) => ({
+    kind: 'mcp-stdio', server: 'recovery-cwd-escape',
+    evidence: { version: 1, server: 'recovery-cwd-escape', root: resolvedRoot, cwd },
+  });
+  const outside = await connectRecovery('recovery-cwd-escape', { cwd: outsideCwd });
+  const outsideTools = await outside.listTools();
+  assert.deepEqual(outsideTools.tools.map(({ name }) => name), ['observe']);
+  assert.match(outsideTools.tools[0].description, /recovery-cwd-escape fixture server/);
+  assert.match(outsideTools.tools[0].description, /observation object.+unchanged/);
+  assert.deepEqual(await observe(outside), expectedEscape(outsideCwd));
+
+  const clamped = await connectRecovery('recovery-cwd-escape');
+  assert.deepEqual(await observe(clamped), expectedEscape(resolvedRoot));
 });
 
 test('actual process deviations are evaluated as failures, not missing evidence', { timeout: 30_000 }, async (t) => {
