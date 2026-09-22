@@ -33,22 +33,23 @@ const recoveryObservations = () => [
     evidence: { version: 1, server: 'recovery-valid', resolvedData: '/state/recovery' },
   },
 ];
-const cwdEscapeRuntime = (server = 'recovery-cwd-escape', root = '/plugins/recovery', cwd = '/plugins') => ({
+const invalidServerRuntime = (server = 'recovery-cwd-escape', root = '/plugins/recovery', cwd = '/plugins') => ({
   kind: 'mcp-stdio', server,
   evidence: { version: 1, server, root, cwd },
 });
-const cwdEscapeDiscovery = (server = 'recovery-cwd-escape', advertised = false) => ({
+const invalidServerDiscovery = (server = 'recovery-cwd-escape', advertised = false) => ({
   kind: 'mcp-discovery', server, advertised,
 });
-const cwdEscapeCases = [
+const invalidServerCases = [
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
+  ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
 ];
 
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 10, total: 26 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 11, total: 27 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -61,19 +62,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 10, total: 26 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 11, total: 27 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 24, total: 26 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 25, total: 27 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 7, total: 26 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 8, total: 27 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -93,7 +94,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 26, total: 26 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 27, total: 27 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -104,7 +105,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 24, total: 26 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 25, total: 27 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -119,11 +120,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 26, total: 26 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 27, total: 27 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 23);
+  assert.equal(mcp.length, 24);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
     assert.ok(result.label.length > 0);
@@ -341,62 +342,62 @@ test('recovery resolved data is nullable and uses the producing OS path syntax',
   }
 });
 
-test('cwd escape exclusions combine discovery with a loaded recovery witness and runtime always fails', () => {
+test('invalid servers combine discovery with a loaded recovery witness and runtime always fails', () => {
   const recoveryRuntime = recoveryObservations()[1];
-  for (const [server, id] of cwdEscapeCases) {
+  for (const [server, id] of invalidServerCases) {
     for (const [observations, status] of [
       [[], 'not_verified'],
-      [[cwdEscapeDiscovery(server, false)], 'not_verified'],
+      [[invalidServerDiscovery(server, false)], 'not_verified'],
       [[recoveryRuntime], 'not_verified'],
-      [[cwdEscapeDiscovery(server, false), recoveryRuntime], 'pass'],
-      [[cwdEscapeDiscovery(server, true)], 'fail'],
-      [[cwdEscapeDiscovery(server, true), recoveryRuntime], 'fail'],
-      [[cwdEscapeRuntime(server, '/plugins/recovery', '/plugins')], 'fail'],
-      [[cwdEscapeRuntime(server, '/plugins/recovery', '/plugins/recovery')], 'fail'],
-      [[cwdEscapeDiscovery(server, false), recoveryRuntime, cwdEscapeRuntime(server)], 'fail'],
+      [[invalidServerDiscovery(server, false), recoveryRuntime], 'pass'],
+      [[invalidServerDiscovery(server, true)], 'fail'],
+      [[invalidServerDiscovery(server, true), recoveryRuntime], 'fail'],
+      [[invalidServerRuntime(server, '/plugins/recovery', '/plugins')], 'fail'],
+      [[invalidServerRuntime(server, '/plugins/recovery', '/plugins/recovery')], 'fail'],
+      [[invalidServerDiscovery(server, false), recoveryRuntime, invalidServerRuntime(server)], 'fail'],
     ]) {
       const report = buildReport({ schemaVersion: 1, observations });
       assert.equal(result(report, id).status, status, `${server}: ${JSON.stringify(observations)}`);
     }
-    assert.equal(result(buildReport({ schemaVersion: 1, observations: [cwdEscapeDiscovery(server, false)] }), id).detail,
+    assert.equal(result(buildReport({ schemaVersion: 1, observations: [invalidServerDiscovery(server, false)] }), id).detail,
       `Agent reported the ${server} tool absent, but recovery-valid runtime evidence is missing.`);
     assert.equal(result(buildReport({ schemaVersion: 1, observations: [recoveryRuntime] }), id).detail,
       `Missing MCP discovery observation for ${server}.`);
-    assert.equal(result(buildReport({ schemaVersion: 1, observations: [cwdEscapeRuntime(server)] }), id).detail,
+    assert.equal(result(buildReport({ schemaVersion: 1, observations: [invalidServerRuntime(server)] }), id).detail,
       `${server} ran with working directory "/plugins" and plugin root "/plugins/recovery".`);
-    assert.equal(result(buildReport({ schemaVersion: 1, observations: [cwdEscapeDiscovery(server, true)] }), id).detail,
+    assert.equal(result(buildReport({ schemaVersion: 1, observations: [invalidServerDiscovery(server, true)] }), id).detail,
       `Agent reported the ${server} observe tool advertised by the client.`);
-    assert.equal(result(buildReport({ schemaVersion: 1, observations: [cwdEscapeDiscovery(server, false), recoveryRuntime] }), id).detail,
+    assert.equal(result(buildReport({ schemaVersion: 1, observations: [invalidServerDiscovery(server, false), recoveryRuntime] }), id).detail,
       `Agent reported the ${server} tool absent from the client inventory while recovery-valid runtime evidence was available.`);
   }
 });
 
-test('cwd escape identities canonicalize separately and preserve existing results', () => {
-  const escapeIds = new Set(cwdEscapeCases.map(([, id]) => id));
+test('invalid server identities canonicalize separately and preserve existing results', () => {
+  const invalidIds = new Set(invalidServerCases.map(([, id]) => id));
   const recoveryRuntime = recoveryObservations()[1];
-  const discoveries = cwdEscapeCases.map(([server]) => cwdEscapeDiscovery(server, false));
-  const escapeRuntimes = cwdEscapeCases.map(([server], index) => cwdEscapeRuntime(server, '/plugins/recovery', index ? '/state' : '/plugins'));
-  const observations = [escapeRuntimes[1], discoveries[0], recoveryRuntime, escapeRuntimes[0], discoveries[1]];
+  const discoveries = invalidServerCases.map(([server]) => invalidServerDiscovery(server, false));
+  const invalidRuntimes = invalidServerCases.map(([server], index) => invalidServerRuntime(server, '/plugins/recovery', index ? '/state' : '/plugins'));
+  const observations = [invalidRuntimes[1], discoveries[0], recoveryRuntime, invalidRuntimes[2], invalidRuntimes[0], discoveries[1], discoveries[2]];
   const report = buildReport({ schemaVersion: 1, observations });
-  assert.deepEqual(report.observations, [...discoveries, recoveryRuntime, ...escapeRuntimes]);
-  for (const [, id] of cwdEscapeCases) assert.equal(result(report, id).status, 'fail');
+  assert.deepEqual(report.observations, [...discoveries, recoveryRuntime, ...invalidRuntimes]);
+  for (const [, id] of invalidServerCases) assert.equal(result(report, id).status, 'fail');
   assert.deepEqual(buildReport({ schemaVersion: 1, observations: report.observations }), report);
   assert.deepEqual(buildReport({ schemaVersion: 1, observations: [...observations].reverse() }), report);
 
-  escapeRuntimes[0].evidence.cwd = '/changed-after-report';
+  invalidRuntimes[0].evidence.cwd = '/changed-after-report';
   discoveries[0].advertised = true;
   assert.equal(report.observations[0].advertised, false);
-  assert.equal(report.observations[3].evidence.cwd, '/plugins');
+  assert.equal(report.observations[4].evidence.cwd, '/plugins');
 
   const before = buildReport({ schemaVersion: 1, observations: [recoveryRuntime] });
-  const after = buildReport({ schemaVersion: 1, observations: [recoveryRuntime, ...cwdEscapeCases.map(([server]) => cwdEscapeDiscovery(server, false))] });
-  assert.deepEqual(after.results.filter(({ id }) => !escapeIds.has(id)),
-    before.results.filter(({ id }) => !escapeIds.has(id)));
-  for (const [, id] of cwdEscapeCases) assert.equal(result(after, id).status, 'pass');
+  const after = buildReport({ schemaVersion: 1, observations: [recoveryRuntime, ...invalidServerCases.map(([server]) => invalidServerDiscovery(server, false))] });
+  assert.deepEqual(after.results.filter(({ id }) => !invalidIds.has(id)),
+    before.results.filter(({ id }) => !invalidIds.has(id)));
+  for (const [, id] of invalidServerCases) assert.equal(result(after, id).status, 'pass');
 });
 
-test('cwd escape discovery and runtime schemas are strict and independently unique', () => {
-  const discovery = cwdEscapeDiscovery('recovery-cwd-escape', false);
+test('invalid server discovery and runtime schemas are strict and independently unique', () => {
+  const discovery = invalidServerDiscovery('recovery-cwd-escape', false);
   for (const value of [
     { ...discovery, advertised: null },
     { ...discovery, advertised: 'false' },
@@ -404,8 +405,8 @@ test('cwd escape discovery and runtime schemas are strict and independently uniq
     { ...discovery, evidence: null },
     { kind: 'mcp-discovery', server: 'recovery-cwd-escape' },
   ]) assert.throws(() => buildReport({ schemaVersion: 1, observations: [value] }), TypeError);
-  assert.throws(() => buildReport({ schemaVersion: 1, observations: [discovery, cwdEscapeDiscovery('recovery-cwd-escape', true)] }), /duplicate/);
-  assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: cwdEscapeCases.map(([server]) => cwdEscapeDiscovery(server)) }));
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [discovery, invalidServerDiscovery('recovery-cwd-escape', true)] }), /duplicate/);
+  assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: invalidServerCases.map(([server]) => invalidServerDiscovery(server)) }));
 
   const invalidRuntime = [
     (value) => { value.evidence.version = 2; },
@@ -417,15 +418,15 @@ test('cwd escape discovery and runtime schemas are strict and independently uniq
     (value) => { value.evidence.resolvedData = '/data'; },
     (value) => { value.evidence.argv = []; },
   ];
-  for (const [server] of cwdEscapeCases) {
+  for (const [server] of invalidServerCases) {
     for (const change of invalidRuntime) {
-      const value = cwdEscapeRuntime(server);
+      const value = invalidServerRuntime(server);
       change(value);
       assert.throws(() => buildReport({ schemaVersion: 1, observations: [value] }), TypeError);
     }
   }
-  assert.throws(() => buildReport({ schemaVersion: 1, observations: [cwdEscapeRuntime(), cwdEscapeRuntime()] }), /duplicate/);
-  assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: cwdEscapeCases.map(([server]) => cwdEscapeRuntime(server)) }));
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [invalidServerRuntime(), invalidServerRuntime()] }), /duplicate/);
+  assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: invalidServerCases.map(([server]) => invalidServerRuntime(server)) }));
 });
 
 test('failure diagnostics preserve value boundaries and escape control characters', () => {
@@ -495,7 +496,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 6, total: 26 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 7, total: 27 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));

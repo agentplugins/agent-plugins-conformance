@@ -10,5 +10,6 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.stdio.recovery.valid-server-available` | The valid `recovery-valid` stdio MCP server remains available under the combined configuration. |
 | `mcp.stdio.cwd.plugin-relative-escape` | A server whose plugin-relative working directory escapes the plugin root is excluded. |
 | `mcp.stdio.cwd.plugin-data-escape` | A server whose data-rooted working directory escapes the plugin data directory is excluded. |
+| `mcp.stdio.config.unknown-field` | A server with an unknown configuration field is excluded. |
 
 The availability checks exercise the combined configuration. They do not evaluate diagnostics, determine how the client treated individual invalid entries, or isolate the effect of each invalid field or entry.

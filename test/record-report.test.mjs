@@ -29,16 +29,17 @@ const recoverySkill = (marker = 'APC_RECOVERY_VALID_V1') => ({
 const recoveryMcp = () => ({
   kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData: '/recovery-data' },
 });
-const cwdEscapeRuntime = (server = 'recovery-cwd-escape', root = '/recovery-plugin', cwd = '/parent') => ({
+const invalidServerRuntime = (server = 'recovery-cwd-escape', root = '/recovery-plugin', cwd = '/parent') => ({
   kind: 'mcp-stdio', server,
   evidence: { version: 1, server, root, cwd },
 });
-const cwdEscapeDiscovery = (server = 'recovery-cwd-escape', advertised = false) => ({
+const invalidServerDiscovery = (server = 'recovery-cwd-escape', advertised = false) => ({
   kind: 'mcp-discovery', server, advertised,
 });
-const cwdEscapeCases = [
+const invalidServerCases = [
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
+  ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
 ];
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({
@@ -285,37 +286,37 @@ test('recovery observations have distinct recorder keys and repeated keys replac
   assert.equal(report.results.find(({ id }) => id === 'skills.recovery.valid-skill-available').status, 'fail');
 });
 
-test('cwd escape identities persist and replace under separate recorder keys', async (t) => {
+test('invalid server identities persist and replace under separate recorder keys', async (t) => {
   const f = await fixture(t);
   f.success(start);
   f.record(recoveryMcp());
-  for (const [server] of cwdEscapeCases) f.record(cwdEscapeDiscovery(server, false));
+  for (const [server] of invalidServerCases) f.record(invalidServerDiscovery(server, false));
 
   let report = await f.read();
-  assert.deepEqual(report.observations, [...cwdEscapeCases.map(([server]) => cwdEscapeDiscovery(server, false)), recoveryMcp()]);
-  for (const [, id] of cwdEscapeCases) assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  assert.deepEqual(report.observations, [...invalidServerCases.map(([server]) => invalidServerDiscovery(server, false)), recoveryMcp()]);
+  for (const [, id] of invalidServerCases) assert.equal(report.results.find((item) => item.id === id).status, 'pass');
 
-  const runtimes = cwdEscapeCases.map(([server], index) => cwdEscapeRuntime(server, '/recovery-plugin', index ? '/data-parent' : '/parent'));
+  const runtimes = invalidServerCases.map(([server], index) => invalidServerRuntime(server, '/recovery-plugin', index ? '/data-parent' : '/parent'));
   for (const runtime of runtimes) f.record(runtime);
   report = await f.read();
   assert.deepEqual(report.observations, [
-    ...cwdEscapeCases.map(([server]) => cwdEscapeDiscovery(server, false)), recoveryMcp(), ...runtimes,
+    ...invalidServerCases.map(([server]) => invalidServerDiscovery(server, false)), recoveryMcp(), ...runtimes,
   ]);
-  for (const [, id] of cwdEscapeCases) assert.equal(report.results.find((item) => item.id === id).status, 'fail');
+  for (const [, id] of invalidServerCases) assert.equal(report.results.find((item) => item.id === id).status, 'fail');
 
-  for (const [server, id] of cwdEscapeCases) {
-    f.record(cwdEscapeDiscovery(server, true));
-    f.record(cwdEscapeDiscovery(server, false));
+  for (const [server, id] of invalidServerCases) {
+    f.record(invalidServerDiscovery(server, true));
+    f.record(invalidServerDiscovery(server, false));
     report = await f.read();
     assert.equal(report.results.find((item) => item.id === id).status, 'fail');
     assert.ok(report.observations.some(({ kind, server: observed }) => kind === 'mcp-stdio' && observed === server));
   }
 
-  const replacementRuntime = cwdEscapeRuntime('recovery-cwd-data-escape', '/recovery-plugin', '/recovery-plugin');
+  const replacementRuntime = invalidServerRuntime('recovery-unknown-field', '/recovery-plugin', '/recovery-plugin');
   f.record(replacementRuntime);
   report = await f.read();
-  assert.deepEqual(report.observations.find(({ kind, server }) => kind === 'mcp-stdio' && server === 'recovery-cwd-data-escape'), replacementRuntime);
-  assert.equal(report.results.find((item) => item.id === 'mcp.stdio.cwd.plugin-data-escape').status, 'fail');
+  assert.deepEqual(report.observations.find(({ kind, server }) => kind === 'mcp-stdio' && server === 'recovery-unknown-field'), replacementRuntime);
+  assert.equal(report.results.find((item) => item.id === 'mcp.stdio.config.unknown-field').status, 'fail');
 });
 
 test('record preserves a cleanup warning while keeping successful writability passing', async (t) => {
