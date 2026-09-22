@@ -72,8 +72,15 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.deepEqual(mcp.mcpServers['recovery-cwd-escape'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-escape'], cwd: './..',
   });
+  assert.deepEqual(mcp.mcpServers['recovery-cwd-data-escape'], {
+    type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-data-escape'],
+    cwd: '${PLUGIN_DATA}/..',
+  });
   const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
   assert.equal(relative(recoveryRoot, resolve(recoveryRoot, mcp.mcpServers['recovery-cwd-escape'].cwd)), '..');
+  const dataRoot = resolve(recoveryRoot, 'data root');
+  const dataEscape = mcp.mcpServers['recovery-cwd-data-escape'].cwd.replace('${PLUGIN_DATA}', dataRoot);
+  assert.equal(relative(dataRoot, resolve(dataEscape)), '..');
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) => instancePath.startsWith('/mcpServers/recovery-invalid')),
     JSON.stringify(validateMcp.errors));

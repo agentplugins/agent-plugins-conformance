@@ -16936,7 +16936,7 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   } catch {
   }
 }
-var identity = process.argv[2] === "recovery-cwd-escape" ? "recovery-cwd-escape" : "recovery-valid";
+var identity = ["recovery-cwd-escape", "recovery-cwd-data-escape"].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var server = new Server(
   { name: `agent-plugins-conformance-${identity}`, version: "0.1.0" },
@@ -16944,7 +16944,7 @@ var server = new Server(
 );
 var observeTool = {
   name: "observe",
-  description: identity === "recovery-valid" ? "Return an observation from the valid recovery server. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper." : "Return an observation from the recovery-cwd-escape fixture server, including its resolved plugin root and actual working directory. Record the complete observation object from structuredContent (or parsed JSON text) unchanged; exclude the MCP result wrapper.",
+  description: identity === "recovery-valid" ? "Return an observation from the valid recovery server. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper." : `Return an observation from the ${identity} fixture server, including its resolved plugin root and actual working directory. Record the complete observation object from structuredContent (or parsed JSON text) unchanged; exclude the MCP result wrapper.`,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 };
