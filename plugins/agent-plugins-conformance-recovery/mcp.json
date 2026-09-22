@@ -39,6 +39,12 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-data"],
       "env": { "PLUGIN_DATA": "${PLUGIN_DATA}" }
     },
+    "recovery-cwd-symlink-escape": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-cwd-symlink-escape"],
+      "cwd": "./escape-link"
+    },
     "recovery-http-fragment": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment"

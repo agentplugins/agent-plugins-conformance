@@ -7200,8 +7200,8 @@ var require_dist = __commonJS({
 });
 
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
-import { realpathSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { lstatSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
@@ -16941,9 +16941,26 @@ var identity = [
   "recovery-cwd-data-escape",
   "recovery-unknown-field",
   "recovery-env-plugin-root",
-  "recovery-env-plugin-data"
+  "recovery-env-plugin-data",
+  "recovery-cwd-symlink-escape"
 ].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
+function symlinkEvidence() {
+  const path = join(root, "escape-link");
+  const evidence = { root, path, kind: null, linkText: null, resolvedPath: null, resolvedKind: null, error: null };
+  try {
+    const entry = lstatSync(path);
+    evidence.kind = entry.isSymbolicLink() ? "symlink" : entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other";
+    if (entry.isSymbolicLink()) evidence.linkText = readlinkSync(path);
+    evidence.resolvedPath = realpathSync.native(path);
+    const target = statSync(path);
+    evidence.resolvedKind = target.isDirectory() ? "directory" : target.isFile() ? "file" : "other";
+  } catch (error2) {
+    if (evidence.kind === null && error2.code === "ENOENT") evidence.kind = "missing";
+    evidence.error = error2.code ?? error2.message;
+  }
+  return evidence;
+}
 var server = new Server(
   { name: `agent-plugins-conformance-${identity}`, version: "0.1.0" },
   { capabilities: { tools: {} } }
@@ -16962,7 +16979,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
       throw new Error("observe requires an empty object");
     }
-    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData } } : {
+    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, cwdSymlink: symlinkEvidence() } } : {
       kind: "mcp-stdio",
       server: identity,
       evidence: {

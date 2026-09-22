@@ -1,0 +1,50 @@
+name: Symlink cwd prototype
+on:
+  push:
+    branches: [agent/symlink-cwd-prototype]
+permissions:
+  contents: read
+jobs:
+  native:
+    name: Symlink prototype (${{ matrix.os }})
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary: codex-x86_64-unknown-linux-musl
+          - os: windows-latest
+            binary: codex-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: Record checkout shape and prepare canonical prototype input
+        run: node prototype/prepare-ci-input.mjs
+      - name: Check decision model
+        run: node --test prototype/evaluate.test.mjs
+      - name: Install pinned Codex
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CODEX_VERSION: 0.155.1
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: |
+          curl --fail --location "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_BINARY}.tar.gz" --output codex.tar.gz
+          tar -xzf codex.tar.gz
+      - name: Exercise native installation and tool discovery
+        shell: bash
+        env:
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: node prototype/run-native.mjs --repository "$GITHUB_WORKSPACE" --codex "$RUNNER_TEMP/$CODEX_BINARY" --evidence-root "$GITHUB_WORKSPACE/prototype/ci-evidence"
+      - name: Collect evidence without following fixture symlinks
+        if: always()
+        run: node prototype/collect-ci-evidence.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: symlink-prototype-${{ matrix.os }}
+          path: prototype/ci-artifact/
