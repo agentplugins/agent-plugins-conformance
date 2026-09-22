@@ -19058,6 +19058,10 @@ var host = "127.0.0.1";
 var port = 43187;
 var pathname = "/conformance/mcp";
 var url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
+var recoveryRoutes = /* @__PURE__ */ new Map([
+  ["/conformance/recovery-http-fragment", "recovery-http-fragment"],
+  ["/conformance/recovery-http-duplicate-headers", "recovery-http-duplicate-headers"]
+]);
 var listener = createServer(async (request, response) => {
   const separator = request.url.indexOf("?");
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
@@ -19073,7 +19077,8 @@ var listener = createServer(async (request, response) => {
     response.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }).end(JSON.stringify({ fixture: "agent-plugins-conformance-http", version: 1 }));
     return;
   }
-  if (requestPathname !== pathname) {
+  const fixtureId = recoveryRoutes.get(requestPathname) ?? (requestPathname === pathname ? "http" : null);
+  if (fixtureId === null) {
     response.writeHead(404).end();
     return;
   }
@@ -19083,11 +19088,11 @@ var listener = createServer(async (request, response) => {
   }
   const observation = {
     kind: "mcp-streamable-http",
-    server: "http",
+    server: fixtureId,
     evidence: requestEvidence(request)
   };
   const server = new Server(
-    { name: "agent-plugins-conformance-http", version: "0.1.0" },
+    { name: `agent-plugins-conformance-${fixtureId}`, version: "0.1.0" },
     { capabilities: { tools: {} } }
   );
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: void 0, enableJsonResponse: true });
@@ -19096,7 +19101,7 @@ var listener = createServer(async (request, response) => {
   });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: "observe",
-    description: "Agent Plugins Conformance \u2014 Core, server ID: http. Return this tool request\u2019s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+    description: `Agent Plugins Conformance \u2014 ${fixtureId === "http" ? "Core" : "Recovery"}, server ID: ${fixtureId}. Return this tool request\u2019s URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }] }));
