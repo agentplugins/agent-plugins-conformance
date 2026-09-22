@@ -186,14 +186,16 @@ try {
   const status = await rpc('mcpServerStatus/list', { threadId: thread.id, detail: 'toolsAndAuthOnly' });
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
-  const escape = status.data.find(({ name }) => name === 'recovery-cwd-escape');
-  const escapeAdvertised = escape !== undefined && Object.hasOwn(escape.tools, 'observe');
-  if (escapeAdvertised || !escape || (escape.runtimeStatus === 'connected' && escape.toolsError === null)) {
-    record({ action: 'record', observation: {
-      kind: 'mcp-discovery', server: 'recovery-cwd-escape', advertised: escapeAdvertised,
-    } });
+  const advertisedEscapes = [];
+  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape']) {
+    const escape = status.data.find(({ name }) => name === server);
+    const advertised = escape !== undefined && Object.hasOwn(escape.tools, 'observe');
+    if (advertised) advertisedEscapes.push(server);
+    if (advertised || !escape || (escape.runtimeStatus === 'connected' && escape.toolsError === null)) {
+      record({ action: 'record', observation: { kind: 'mcp-discovery', server, advertised } });
+    }
   }
-  for (const server of [...servers, ...(escapeAdvertised ? ['recovery-cwd-escape'] : [])]) {
+  for (const server of [...servers, ...advertisedEscapes]) {
     assert.equal(status.data.filter(({ name }) => name === server).length, 1,
       `${server}: expected one native MCP server`);
     const result = await rpc('mcpServer/tool/call', {

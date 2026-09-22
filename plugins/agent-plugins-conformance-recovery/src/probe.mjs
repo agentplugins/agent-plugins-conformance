@@ -9,7 +9,8 @@ let resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
 }
-const identity = process.argv[2] === 'recovery-cwd-escape' ? 'recovery-cwd-escape' : 'recovery-valid';
+const identity = ['recovery-cwd-escape', 'recovery-cwd-data-escape'].includes(process.argv[2])
+  ? process.argv[2] : 'recovery-valid';
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 const server = new Server({ name: `agent-plugins-conformance-${identity}`, version: '0.1.0' },
   { capabilities: { tools: {} } });
@@ -17,7 +18,7 @@ const observeTool = {
   name: 'observe',
   description: identity === 'recovery-valid'
     ? 'Return an observation from the valid recovery server. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.'
-    : 'Return an observation from the recovery-cwd-escape fixture server, including its resolved plugin root and actual working directory. Record the complete observation object from structuredContent (or parsed JSON text) unchanged; exclude the MCP result wrapper.',
+    : `Return an observation from the ${identity} fixture server, including its resolved plugin root and actual working directory. Record the complete observation object from structuredContent (or parsed JSON text) unchanged; exclude the MCP result wrapper.`,
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 };

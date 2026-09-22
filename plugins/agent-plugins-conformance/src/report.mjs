@@ -3,8 +3,12 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
-const RECOVERY_CWD_ESCAPE = 'recovery-cwd-escape';
-const SERVERS = [...CORE_SERVERS, 'recovery-valid', RECOVERY_CWD_ESCAPE];
+const RECOVERY_CWD_ESCAPES = Object.freeze({
+  'recovery-cwd-escape': 'mcp.stdio.cwd.plugin-relative-escape',
+  'recovery-cwd-data-escape': 'mcp.stdio.cwd.plugin-data-escape',
+});
+const RECOVERY_CWD_ESCAPE_SERVERS = Object.keys(RECOVERY_CWD_ESCAPES);
+const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...RECOVERY_CWD_ESCAPE_SERVERS];
 const HTTP_SERVERS = ['http', 'http-redirect'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
@@ -103,7 +107,7 @@ export function validateInput(input, { recording = false } = {}) {
   const runtime = new Map();
   const skills = new Map();
   let nestedDiscovery;
-  let cwdEscapeAdvertised;
+  const cwdEscapeDiscovery = new Map();
   const http = new Map();
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
@@ -125,14 +129,14 @@ export function validateInput(input, { recording = false } = {}) {
       const evidence = observation.evidence;
       const keys = observation.server === 'recovery-valid'
         ? ['version', 'server', 'resolvedData']
-        : observation.server === RECOVERY_CWD_ESCAPE
+        : RECOVERY_CWD_ESCAPE_SERVERS.includes(observation.server)
           ? ['version', 'server', 'root', 'cwd']
           : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
-      if (observation.server === RECOVERY_CWD_ESCAPE) {
+      if (RECOVERY_CWD_ESCAPE_SERVERS.includes(observation.server)) {
         for (const field of ['root', 'cwd']) {
           string(evidence[field], `${evidenceAt}.${field}`);
           if (!pathFlavor(evidence[field])) invalid(`${evidenceAt}.${field}`, 'expected an absolute POSIX or Windows path');
@@ -174,10 +178,10 @@ export function validateInput(input, { recording = false } = {}) {
       runtime.set(observation.server, evidence);
     } else if (observation.kind === 'mcp-discovery') {
       object(observation, ['kind', 'server', 'advertised'], ['kind', 'server', 'advertised'], at);
-      member(observation.server, [RECOVERY_CWD_ESCAPE], `${at}.server`);
+      member(observation.server, RECOVERY_CWD_ESCAPE_SERVERS, `${at}.server`);
       if (typeof observation.advertised !== 'boolean') invalid(`${at}.advertised`, 'expected a boolean');
-      if (cwdEscapeAdvertised !== undefined) invalid(at, `duplicate mcp-discovery observation: ${RECOVERY_CWD_ESCAPE}`);
-      cwdEscapeAdvertised = observation.advertised;
+      if (cwdEscapeDiscovery.has(observation.server)) invalid(at, `duplicate mcp-discovery observation: ${observation.server}`);
+      cwdEscapeDiscovery.set(observation.server, observation.advertised);
     } else if (observation.kind === 'skill-discovery') {
       object(observation, ['kind', 'skill', 'advertised'], ['kind', 'skill', 'advertised'], at);
       member(observation.skill, ['conformance-nested'], `${at}.skill`);
@@ -192,11 +196,11 @@ export function validateInput(input, { recording = false } = {}) {
       skills.set(observation.skill, observation.marker);
     }
   }
-  return { runtime, skills, http, nestedDiscovery, cwdEscapeAdvertised };
+  return { runtime, skills, http, nestedDiscovery, cwdEscapeDiscovery };
 }
 
 export function buildReport(input) {
-  const { runtime, skills, http, nestedDiscovery, cwdEscapeAdvertised } = validateInput(input);
+  const { runtime, skills, http, nestedDiscovery, cwdEscapeDiscovery } = validateInput(input);
   const results = new Map(CASES.map(({ id }) => [id, { id, status: 'not_verified', detail: 'No observation supplied.' }]));
   const set = (id, status, detail) => results.set(id, { id, status, detail });
   const check = (id, condition, pass, fail) => set(id, condition ? 'pass' : 'fail', condition ? pass : fail);
@@ -295,20 +299,22 @@ export function buildReport(input) {
   if (runtime.has('recovery-valid')) {
     set('mcp.stdio.recovery.valid-server-available', 'pass', 'Valid runtime evidence supplied for the recovery server.');
   }
-  const cwdEscapeId = 'mcp.stdio.cwd.plugin-relative-escape';
-  const cwdEscape = runtime.get(RECOVERY_CWD_ESCAPE);
-  if (cwdEscape) {
-    set(cwdEscapeId, 'fail',
-      `recovery-cwd-escape ran with working directory ${JSON.stringify(cwdEscape.cwd)} and plugin root ${JSON.stringify(cwdEscape.root)}.`);
-  } else if (cwdEscapeAdvertised === true) {
-    set(cwdEscapeId, 'fail', 'Agent reported the recovery-cwd-escape observe tool advertised by the client.');
-  } else if (cwdEscapeAdvertised === false && runtime.has('recovery-valid')) {
-    set(cwdEscapeId, 'pass', 'Agent reported the recovery-cwd-escape tool absent from the client inventory while recovery-valid runtime evidence was available.');
-  } else if (cwdEscapeAdvertised === false) {
-    set(cwdEscapeId, 'not_verified',
-      'Agent reported the recovery-cwd-escape tool absent, but recovery-valid runtime evidence is missing.');
-  } else {
-    set(cwdEscapeId, 'not_verified', `Missing MCP discovery observation for ${RECOVERY_CWD_ESCAPE}.`);
+  for (const [server, id] of Object.entries(RECOVERY_CWD_ESCAPES)) {
+    const cwdEscape = runtime.get(server);
+    const advertised = cwdEscapeDiscovery.get(server);
+    if (cwdEscape) {
+      set(id, 'fail',
+        `${server} ran with working directory ${JSON.stringify(cwdEscape.cwd)} and plugin root ${JSON.stringify(cwdEscape.root)}.`);
+    } else if (advertised === true) {
+      set(id, 'fail', `Agent reported the ${server} observe tool advertised by the client.`);
+    } else if (advertised === false && runtime.has('recovery-valid')) {
+      set(id, 'pass', `Agent reported the ${server} tool absent from the client inventory while recovery-valid runtime evidence was available.`);
+    } else if (advertised === false) {
+      set(id, 'not_verified',
+        `Agent reported the ${server} tool absent, but recovery-valid runtime evidence is missing.`);
+    } else {
+      set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
+    }
   }
   const coreData = CORE_SERVERS.filter((server) => runtime.get(server)?.resolvedData != null)
     .map((server) => [server, runtime.get(server).resolvedData]);
@@ -389,15 +395,15 @@ export function buildReport(input) {
         kind: 'skill', skill, marker: skills.get(skill),
       })),
       ...(nestedDiscovery === undefined ? [] : [{ kind: 'skill-discovery', skill: 'conformance-nested', advertised: nestedDiscovery }]),
-      ...(cwdEscapeAdvertised === undefined ? [] : [{
-        kind: 'mcp-discovery', server: RECOVERY_CWD_ESCAPE, advertised: cwdEscapeAdvertised,
-      }]),
+      ...RECOVERY_CWD_ESCAPE_SERVERS.filter((server) => cwdEscapeDiscovery.has(server)).map((server) => ({
+        kind: 'mcp-discovery', server, advertised: cwdEscapeDiscovery.get(server),
+      })),
       ...SERVERS.filter((server) => runtime.has(server)).map((server) => {
         const evidence = runtime.get(server);
         if (server === 'recovery-valid') {
           return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData } };
         }
-        if (server === RECOVERY_CWD_ESCAPE) {
+        if (RECOVERY_CWD_ESCAPE_SERVERS.includes(server)) {
           return { kind: 'mcp-stdio', server, evidence: {
             version: evidence.version, server: evidence.server, root: evidence.root, cwd: evidence.cwd,
           } };

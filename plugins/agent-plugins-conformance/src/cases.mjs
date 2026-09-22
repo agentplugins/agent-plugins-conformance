@@ -12,6 +12,7 @@ export const CASES = Object.freeze([
     [`mcp.stdio.cwd.${variant}`, `${server} working directory`, ['7.2.1']],
   ]),
   ['mcp.stdio.cwd.plugin-relative-escape', 'Plugin-relative cwd escape exclusion', ['4.1', '7.2.1', '7.2.2']],
+  ['mcp.stdio.cwd.plugin-data-escape', 'Plugin-data cwd escape exclusion', ['7.2.1', '7.2.2']],
   ['mcp.stdio.env.plugin-root', 'Plugin root environment', ['9.1']],
   ['mcp.stdio.env.plugin-data-absolute', 'Plugin data environment', ['9.1']],
   ['mcp.stdio.data.writable', 'Plugin data writability', ['9.1']],
