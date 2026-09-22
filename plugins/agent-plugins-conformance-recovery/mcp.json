@@ -45,6 +45,16 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-data"],
       "env": { "PLUGIN_DATA": "${PLUGIN_DATA}" }
     },
+    "recovery-http-header-name": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/recovery-http-header-name",
+      "headers": { "X Apc Fixture": "fixture" }
+    },
+    "recovery-http-header-value": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/recovery-http-header-value",
+      "headers": { "x-apc-fixture": "first\r\nsecond" }
+    },
     "recovery-http-userinfo": {
       "type": "streamable-http",
       "url": "http://fixture:fixture@127.0.0.1:43187/conformance/recovery-http-userinfo"

@@ -49,6 +49,8 @@ const invalidHttpServerCases = [
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
   ['recovery-http-duplicate-headers', 'mcp.streamable-http.headers.duplicate-names'],
   ['recovery-http-userinfo', 'mcp.streamable-http.url.userinfo'],
+  ['recovery-http-header-name', 'mcp.streamable-http.headers.invalid-name'],
+  ['recovery-http-header-value', 'mcp.streamable-http.headers.invalid-value'],
 ];
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({

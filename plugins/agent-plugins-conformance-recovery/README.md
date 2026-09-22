@@ -17,5 +17,7 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.streamable-http.url.fragment` | An HTTP server whose URL contains a fragment is excluded. |
 | `mcp.streamable-http.url.userinfo` | An HTTP server whose URL contains user information is excluded. |
 | `mcp.streamable-http.headers.duplicate-names` | An HTTP server with header names that duplicate one another under different casing is excluded. |
+| `mcp.streamable-http.headers.invalid-name` | An HTTP server with an invalid configured header name is excluded. |
+| `mcp.streamable-http.headers.invalid-value` | An HTTP server with an invalid configured header value is excluded. |
 
 The availability checks exercise the combined configuration. They do not evaluate diagnostics, determine how the client treated individual invalid entries, or isolate the effect of each invalid field or entry.

@@ -223,6 +223,59 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(configuredUrl.password, 'fixture');
   });
 
+  await t.test('invalid header routes have valid controls and deliberately permissive failure witnesses', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const cases = [
+      {
+        server: 'recovery-http-header-name',
+        configuredHeaders: { 'X Apc Fixture': 'fixture' },
+        correctedHeaders: { 'X-Apc-Fixture': 'fixture' },
+        correctedValue: 'fixture',
+      },
+      {
+        server: 'recovery-http-header-value',
+        configuredHeaders: { 'x-apc-fixture': 'first\r\nsecond' },
+        correctedHeaders: { 'x-apc-fixture': 'first second' },
+        correctedValue: 'first second',
+      },
+    ];
+
+    for (const { server: serverName, configuredHeaders, correctedHeaders, correctedValue } of cases) {
+      const configured = mcp.mcpServers[serverName];
+      assert.deepEqual(configured.headers, configuredHeaders);
+
+      const observe = async (headers, expectedValue) => {
+        const client = new Client({ name: 'invalid-header-reference-test', version: '1' });
+        t.after(() => client.close());
+        await client.connect(new StreamableHTTPClientTransport(new URL(configured.url), {
+          requestInit: { headers },
+        }));
+        assert.equal(client.getServerVersion().name, `agent-plugins-conformance-${serverName}`);
+        assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+        const result = await client.callTool({ name: 'observe', arguments: {} });
+        const expected = {
+          kind: 'mcp-streamable-http', server: serverName, evidence: {
+            type: 'request', version: 1, pathname: `/conformance/${serverName}`,
+            query: [], headers: { 'x-apc-fixture': expectedValue },
+          },
+        };
+        assert.equal(result.isError, undefined);
+        assert.deepEqual(result.structuredContent, expected);
+        assert.deepEqual(JSON.parse(result.content[0].text), expected);
+      };
+
+      await observe(correctedHeaders, correctedValue);
+
+      // Model an incorrect configuration loader that accepts this invalid entry
+      // and drops its malformed header before constructing the SDK transport.
+      const permissiveHeaders = structuredClone(configured.headers);
+      for (const name of Object.keys(permissiveHeaders)) delete permissiveHeaders[name];
+      assert.deepEqual(permissiveHeaders, {});
+      assert.deepEqual(configured.headers, configuredHeaders);
+      await observe(permissiveHeaders, null);
+    }
+  });
+
   await t.test('invalid tool calls produce errors without observations', async (t) => {
     const client = await connect(t);
     for (const args of [{ extra: true }, undefined]) {
