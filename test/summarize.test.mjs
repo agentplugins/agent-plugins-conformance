@@ -84,7 +84,7 @@ test('summarizer renders a saved cleanup warning from canonical evaluator output
   assert.equal(output.stderr, '');
   assert.equal(output.stdout.trimEnd(), formatReport(value));
   assert.match(output.stdout, /\nWarnings\n/);
-  assert.match(output.stdout, /Plugin data writability \(mcp\.stdio\.data\.writable\)/);
+  assert.match(output.stdout, /Plugin data writability \(filesystem\.data\.writable\)/);
   assert.match(output.stdout, /EBUSY/);
   assert.match(output.stdout, /resource busy/);
 });

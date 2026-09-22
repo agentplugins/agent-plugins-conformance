@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, mkdtemp, readFile, readlink, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 16);
+  assert.equal(direct.summary.not_verified, 17);
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
@@ -102,32 +102,45 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   const root = join(parent, 'copied recovery plugin');
   const data = join(parent, 'recovery data');
   const alias = join(parent, 'recovery data alias');
-  await cp(new URL('../plugins/agent-plugins-conformance-recovery', import.meta.url), root, { recursive: true });
+  const sourceRoot = new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url);
+  const sourceLink = new URL('escape-link', sourceRoot);
+  assert.equal((await lstat(sourceLink)).isSymbolicLink(), true);
+  assert.equal(await readlink(sourceLink), '..');
+  assert.equal(await realpath(sourceLink), await realpath(new URL('..', sourceRoot)));
+  await cp(sourceRoot, root, { recursive: true, verbatimSymlinks: true });
   await mkdir(data);
   await symlink(data, alias, 'junction');
   const resolvedRoot = await realpath(root);
   const resolvedData = await realpath(data);
   const outsideCwd = await realpath(parent);
+  assert.equal((await lstat(join(root, 'escape-link'))).isSymbolicLink(), true);
+  assert.equal(await readlink(join(root, 'escape-link')), '..');
+  assert.equal(await realpath(join(root, 'escape-link')), outsideCwd);
   const clients = [];
   t.after(async () => {
     try { await Promise.all(clients.map((client) => client.close())); } finally { await rm(parent, { recursive: true, force: true }); }
   });
   assert.equal((await readdir(root)).includes('node_modules'), false);
   const configs = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers;
-  const connectRecovery = async (serverName, { cwd = resolvedRoot, pluginData } = {}) => {
+  const connectRecovery = async (serverName, {
+    cwd, pluginData, pluginRoot = root, useConfiguredCwd = false,
+  } = {}) => {
     const config = configs[serverName];
-    const variables = { PLUGIN_ROOT: root, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) };
+    const variables = { PLUGIN_ROOT: pluginRoot, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) };
+    const expand = (value) => value.replaceAll('${PLUGIN_ROOT}', pluginRoot)
+      .replaceAll('${PLUGIN_DATA}', pluginData ?? '${PLUGIN_DATA}');
     const configuredEnv = Object.fromEntries(Object.entries(config.env ?? {}).map(([name, value]) => [
-      name,
-      value.replaceAll('${PLUGIN_ROOT}', root)
-        .replaceAll('${PLUGIN_DATA}', pluginData ?? '${PLUGIN_DATA}'),
+      name, expand(value),
     ]));
+    const configuredCwd = config.cwd
+      ? config.cwd.startsWith('./') ? join(pluginRoot, config.cwd) : expand(config.cwd)
+      : pluginRoot;
     const client = new Client({ name: 'conformance-recovery-reference-test', version: '1' });
     clients.push(client);
     await client.connect(new StdioClientTransport({
       command: process.execPath,
-      args: config.args.map((argument) => argument.replaceAll('${PLUGIN_ROOT}', root)),
-      cwd,
+      args: config.args.map(expand),
+      cwd: cwd ?? (useConfiguredCwd ? configuredCwd : pluginRoot),
       env: { ...variables, ...configuredEnv },
       stderr: 'pipe',
     }));
@@ -145,7 +158,8 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   assert.deepEqual(tools.map(({ name }) => name), ['observe']);
   const response = await observe(client);
   const observation = {
-    kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData },
+    kind: 'mcp-stdio', server: 'recovery-valid',
+    evidence: { version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: 'symlink' },
   };
   assert.deepEqual(response, observation);
   assert.equal(buildReport(input([observation])).results
@@ -156,6 +170,29 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   assert.equal(unavailableObservation.evidence.resolvedData, null);
   assert.equal(buildReport(input([unavailableObservation])).results
     .find(({ id }) => id === 'mcp.stdio.recovery.valid-server-available').status, 'pass');
+
+  const symlinkServer = 'recovery-cwd-symlink-escape';
+  const symlinkCase = 'filesystem.containment.cwd-symlink-escape';
+  const removedRoot = join(parent, 'recovery with link removed');
+  await cp(sourceRoot, removedRoot, { recursive: true, verbatimSymlinks: true });
+  await rm(join(removedRoot, 'escape-link'));
+  const removedClient = await connectRecovery('recovery-valid', { pluginRoot: removedRoot, pluginData: alias });
+  const removedObservation = await observe(removedClient);
+  assert.equal(removedObservation.evidence.symlinkCwd, 'missing');
+  assert.equal(buildReport(input([
+    { kind: 'mcp-discovery', server: symlinkServer, advertised: false }, removedObservation,
+  ])).results.find(({ id }) => id === symlinkCase).status, 'pass');
+
+  const plainFileRoot = join(parent, 'recovery with plain file');
+  await cp(sourceRoot, plainFileRoot, { recursive: true, verbatimSymlinks: true });
+  await rm(join(plainFileRoot, 'escape-link'));
+  await writeFile(join(plainFileRoot, 'escape-link'), '..');
+  const plainFileClient = await connectRecovery('recovery-valid', { pluginRoot: plainFileRoot, pluginData: alias });
+  const plainFileObservation = await observe(plainFileClient);
+  assert.equal(plainFileObservation.evidence.symlinkCwd, 'other');
+  assert.equal(buildReport(input([
+    { kind: 'mcp-discovery', server: symlinkServer, advertised: false }, plainFileObservation,
+  ])).results.find(({ id }) => id === symlinkCase).status, 'not_verified');
 
   const expectedInvalid = (server, cwd) => ({
     kind: 'mcp-stdio', server,
@@ -184,6 +221,13 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
 
   const clampedData = await connectRecovery('recovery-cwd-data-escape', { cwd: resolvedData, pluginData: alias });
   assert.deepEqual(await observe(clampedData), expectedInvalid('recovery-cwd-data-escape', resolvedData));
+
+  const symlinkEscape = await connectRecovery(symlinkServer, { useConfiguredCwd: true });
+  await inspectInvalidTool(symlinkEscape, symlinkServer);
+  const symlinkEscapeObservation = await observe(symlinkEscape);
+  assert.deepEqual(symlinkEscapeObservation, expectedInvalid(symlinkServer, outsideCwd));
+  assert.equal(buildReport(input([symlinkEscapeObservation])).results
+    .find(({ id }) => id === symlinkCase).status, 'fail');
 
   const unknownField = await connectRecovery('recovery-unknown-field');
   await inspectInvalidTool(unknownField, 'recovery-unknown-field');
@@ -227,7 +271,7 @@ test('packaged default probe reports skipped and failed PLUGIN_DATA writes as ev
   assert.ok(!relative.isError);
   assert.equal(relative.structuredContent.evidence.dataWrite, null);
   assert.equal(buildReport(input([relative.structuredContent])).results
-    .find(({ id }) => id === 'mcp.stdio.data.writable').status, 'not_verified');
+    .find(({ id }) => id === 'filesystem.data.writable').status, 'not_verified');
 
   for (const data of [join(files.data, 'missing'), existing]) {
     const client = await connect(files, 'default', {
@@ -239,7 +283,7 @@ test('packaged default probe reports skipped and failed PLUGIN_DATA writes as ev
     assert.match(result.structuredContent.evidence.dataWrite.error.code, /^(ENOENT|ENOTDIR)$/);
     assert.equal(result.structuredContent.evidence.dataWrite.cleanupError, null);
     assert.equal(buildReport(input([result.structuredContent])).results
-      .find(({ id }) => id === 'mcp.stdio.data.writable').status, 'fail');
+      .find(({ id }) => id === 'filesystem.data.writable').status, 'fail');
   }
   assert.equal(await readFile(existing, 'utf8'), existingContents);
 });

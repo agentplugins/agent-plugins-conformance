@@ -21,6 +21,12 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-cwd-data-escape"],
       "cwd": "${PLUGIN_DATA}/.."
     },
+    "recovery-cwd-symlink-escape": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-cwd-symlink-escape"],
+      "cwd": "./escape-link"
+    },
     "recovery-unknown-field": {
       "type": "stdio",
       "command": "node",

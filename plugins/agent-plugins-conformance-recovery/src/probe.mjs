@@ -1,5 +1,5 @@
-import { realpathSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { lstatSync, realpathSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -10,11 +10,18 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
 }
 const identity = [
-  'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field',
+  'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
   'recovery-env-plugin-root', 'recovery-env-plugin-data',
 ].includes(process.argv[2])
   ? process.argv[2] : 'recovery-valid';
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
+function inspectSymlinkCwd() {
+  try {
+    return lstatSync(join(root, 'escape-link')).isSymbolicLink() ? 'symlink' : 'other';
+  } catch (error) {
+    return error.code === 'ENOENT' ? 'missing' : null;
+  }
+}
 const server = new Server({ name: `agent-plugins-conformance-${identity}`, version: '0.1.0' },
   { capabilities: { tools: {} } });
 const observeTool = {
@@ -34,7 +41,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       throw new Error('observe requires an empty object');
     }
     const observation = identity === 'recovery-valid'
-      ? { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData } }
+      ? { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: inspectSymlinkCwd() } }
       : {
           kind: 'mcp-stdio',
           server: identity,

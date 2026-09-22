@@ -75,7 +75,7 @@ An unsuccessful attempt on Core's `http` server fails the availability check onl
 
 ### Choose required checks
 
-Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills, `mcp.stdio.*` covers stdio MCP behavior, and `mcp.streamable-http.*` covers the optional HTTP fixture. Prefix queries include future checks added within the selected scope.
+Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills, `filesystem.*` covers package-path containment and plugin data storage, `mcp.stdio.*` covers stdio MCP behavior, and `mcp.streamable-http.*` covers the optional HTTP fixture. Prefix queries include future checks added within the selected scope.
 
 For example, require all stdio MCP checks to pass:
 

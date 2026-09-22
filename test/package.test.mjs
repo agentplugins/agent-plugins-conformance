@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { lstat, readFile, readlink, readdir, realpath } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -76,6 +76,10 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-data-escape'],
     cwd: '${PLUGIN_DATA}/..',
   });
+  assert.deepEqual(mcp.mcpServers['recovery-cwd-symlink-escape'], {
+    type: 'stdio', command: 'node',
+    args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-symlink-escape'], cwd: './escape-link',
+  });
   assert.deepEqual(mcp.mcpServers['recovery-unknown-field'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-unknown-field'],
     conformanceUnknown: true,
@@ -98,6 +102,15 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     headers: { 'X-Apc-Duplicate': 'first', 'x-apc-duplicate': 'second' },
   });
   const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
+  const escapeLink = resolve(recoveryRoot, 'escape-link');
+  assert.equal((await lstat(escapeLink)).isSymbolicLink(), true);
+  assert.equal(await readlink(escapeLink), '..');
+  assert.equal(await realpath(escapeLink), await realpath(resolve(recoveryRoot, '..')));
+  const symlinkOnlyMcp = {
+    $schema: mcp.$schema,
+    mcpServers: { 'recovery-cwd-symlink-escape': mcp.mcpServers['recovery-cwd-symlink-escape'] },
+  };
+  assert.equal(validateMcp(symlinkOnlyMcp), true, JSON.stringify(validateMcp.errors));
   assert.equal(relative(recoveryRoot, resolve(recoveryRoot, mcp.mcpServers['recovery-cwd-escape'].cwd)), '..');
   const dataRoot = resolve(recoveryRoot, 'data root');
   const dataEscape = mcp.mcpServers['recovery-cwd-data-escape'].cwd.replace('${PLUGIN_DATA}', dataRoot);
