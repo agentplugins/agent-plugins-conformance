@@ -9,7 +9,10 @@ let resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
 }
-const identity = ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field'].includes(process.argv[2])
+const identity = [
+  'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field',
+  'recovery-env-plugin-root', 'recovery-env-plugin-data',
+].includes(process.argv[2])
   ? process.argv[2] : 'recovery-valid';
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 const server = new Server({ name: `agent-plugins-conformance-${identity}`, version: '0.1.0' },

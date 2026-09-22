@@ -27,6 +27,18 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-unknown-field"],
       "conformanceUnknown": true
     },
+    "recovery-env-plugin-root": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-root"],
+      "env": { "PLUGIN_ROOT": "${PLUGIN_ROOT}" }
+    },
+    "recovery-env-plugin-data": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-data"],
+      "env": { "PLUGIN_DATA": "${PLUGIN_DATA}" }
+    },
     "recovery-http-fragment": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment"

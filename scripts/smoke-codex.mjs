@@ -188,6 +188,7 @@ try {
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
   for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field',
+    'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-fragment', 'recovery-http-duplicate-headers']) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
