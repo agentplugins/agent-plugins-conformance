@@ -3,14 +3,19 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
-const RECOVERY_INVALID_SERVERS = Object.freeze({
+const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-cwd-escape': 'mcp.stdio.cwd.plugin-relative-escape',
   'recovery-cwd-data-escape': 'mcp.stdio.cwd.plugin-data-escape',
   'recovery-unknown-field': 'mcp.stdio.config.unknown-field',
 });
-const RECOVERY_INVALID_SERVER_NAMES = Object.keys(RECOVERY_INVALID_SERVERS);
-const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...RECOVERY_INVALID_SERVER_NAMES];
-const HTTP_SERVERS = ['http', 'http-redirect'];
+const INVALID_HTTP_SERVERS = Object.freeze({
+  'recovery-http-fragment': 'mcp.streamable-http.url.fragment',
+  'recovery-http-duplicate-headers': 'mcp.streamable-http.headers.duplicate-names',
+});
+const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
+const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
+const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
+const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -130,14 +135,14 @@ export function validateInput(input, { recording = false } = {}) {
       const evidence = observation.evidence;
       const keys = observation.server === 'recovery-valid'
         ? ['version', 'server', 'resolvedData']
-        : RECOVERY_INVALID_SERVER_NAMES.includes(observation.server)
+        : INVALID_STDIO_SERVER_NAMES.includes(observation.server)
           ? ['version', 'server', 'root', 'cwd']
           : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
       object(evidence, keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
-      if (RECOVERY_INVALID_SERVER_NAMES.includes(observation.server)) {
+      if (INVALID_STDIO_SERVER_NAMES.includes(observation.server)) {
         for (const field of ['root', 'cwd']) {
           string(evidence[field], `${evidenceAt}.${field}`);
           if (!pathFlavor(evidence[field])) invalid(`${evidenceAt}.${field}`, 'expected an absolute POSIX or Windows path');
@@ -300,7 +305,7 @@ export function buildReport(input) {
   if (runtime.has('recovery-valid')) {
     set('mcp.stdio.recovery.valid-server-available', 'pass', 'Valid runtime evidence supplied for the recovery server.');
   }
-  for (const [server, id] of Object.entries(RECOVERY_INVALID_SERVERS)) {
+  for (const [server, id] of Object.entries(INVALID_STDIO_SERVERS)) {
     const invalidRuntime = runtime.get(server);
     const advertised = invalidServerDiscovery.get(server);
     if (invalidRuntime) {
@@ -313,6 +318,27 @@ export function buildReport(input) {
     } else if (advertised === false) {
       set(id, 'not_verified',
         `Agent reported the ${server} tool absent, but recovery-valid runtime evidence is missing.`);
+    } else {
+      set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
+    }
+  }
+  for (const [server, id] of Object.entries(INVALID_HTTP_SERVERS)) {
+    const observation = http.get(server);
+    const advertised = invalidServerDiscovery.get(server);
+    if (observation?.evidence?.type === 'request') {
+      set(id, 'fail', `The invalid ${server} entry returned runtime evidence.`);
+    } else if (advertised === true) {
+      set(id, 'fail', `Agent reported the ${server} observe tool advertised by the client.`);
+    } else if (observation) {
+      set(id, 'not_verified', `The completed native attempt for ${server} did not establish exclusion; its evidence is preserved in the observation.`);
+    } else if (advertised === false) {
+      const missing = [
+        ...(runtime.has('recovery-valid') ? [] : ['recovery-valid']),
+        ...(ordinaryHttp?.evidence?.type === 'request' ? [] : ['http']),
+      ];
+      set(id, missing.length ? 'not_verified' : 'pass', missing.length
+        ? `Agent reported the ${server} tool absent, but valid runtime evidence is missing for: ${missing.join(', ')}.`
+        : `Agent reported the ${server} tool absent from the client inventory while recovery-valid and http runtime evidence was available.`);
     } else {
       set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
     }
@@ -404,7 +430,7 @@ export function buildReport(input) {
         if (server === 'recovery-valid') {
           return { kind: 'mcp-stdio', server, evidence: { version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData } };
         }
-        if (RECOVERY_INVALID_SERVER_NAMES.includes(server)) {
+        if (INVALID_STDIO_SERVER_NAMES.includes(server)) {
           return { kind: 'mcp-stdio', server, evidence: {
             version: evidence.version, server: evidence.server, root: evidence.root, cwd: evidence.cwd,
           } };

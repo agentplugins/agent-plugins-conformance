@@ -41,6 +41,10 @@ const invalidServerCases = [
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
   ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
 ];
+const invalidHttpServerCases = [
+  ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
+  ['recovery-http-duplicate-headers', 'mcp.streamable-http.headers.duplicate-names'],
+];
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({
   kind: 'mcp-streamable-http', server: 'http', evidence: {
@@ -49,6 +53,10 @@ const http = () => ({
   },
 });
 const missingHttp = () => ({ kind: 'mcp-streamable-http', server: 'http', evidence: null });
+const invalidHttp = (server, evidence = {
+  type: 'request', version: 1, pathname: `/conformance/${server}`, query: [],
+  headers: { 'x-apc-fixture': null },
+}) => ({ kind: 'mcp-streamable-http', server, evidence });
 const redirectError = (classification, message = 'native error\n  with exact whitespace  ') => ({
   kind: 'mcp-streamable-http', server: 'http-redirect',
   evidence: { type: 'error', message, classification },
@@ -317,6 +325,75 @@ test('invalid server identities persist and replace under separate recorder keys
   report = await f.read();
   assert.deepEqual(report.observations.find(({ kind, server }) => kind === 'mcp-stdio' && server === 'recovery-unknown-field'), replacementRuntime);
   assert.equal(report.results.find((item) => item.id === 'mcp.stdio.config.unknown-field').status, 'fail');
+});
+
+test('invalid HTTP discovery and runtime records replace independently and use reporter health', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  assert.equal(health.run(start).status, 0);
+  f.record(recoveryMcp());
+  for (const [server] of invalidHttpServerCases) f.record(invalidServerDiscovery(server, false));
+  const control = http();
+  assert.equal(health.run({ action: 'record', observation: control }).status, 0);
+  let calls = 1;
+  let report = await f.read();
+  for (const [, id] of invalidHttpServerCases) {
+    assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  }
+
+  const [failedServer, failedId] = invalidHttpServerCases[0];
+  assert.equal(health.run({ action: 'record', observation: invalidHttp(failedServer) }).status, 0);
+  report = await f.read();
+  assert.equal(await health.calls(), ++calls);
+  assert.equal(report.results.find((item) => item.id === failedId).status, 'fail');
+  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+  assert.equal(report.observations.find(({ kind, server }) =>
+    kind === 'mcp-streamable-http' && server === failedServer).serverHealthCheck, 'passed');
+
+  const exact = 'native refusal\n\n  scoped detail\t';
+  await health.setResponse({ error: 'fixture unavailable after attempt' });
+  assert.equal(health.run({ action: 'record', observation: invalidHttp(failedServer, {
+    type: 'error', message: exact, classification: null,
+  }) }).status, 0);
+  report = await f.read();
+  assert.equal(await health.calls(), ++calls);
+  const saved = report.observations.find(({ kind, server }) =>
+    kind === 'mcp-streamable-http' && server === failedServer);
+  assert.deepEqual(saved, {
+    ...invalidHttp(failedServer, { type: 'error', message: exact, classification: null }),
+    serverHealthCheck: 'failed',
+  });
+  assert.equal(report.results.find((item) => item.id === failedId).status, 'not_verified');
+  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+
+  assert.equal(health.run({ action: 'record', observation: invalidHttp(failedServer, null) }).status, 0);
+  report = await f.read();
+  assert.equal(await health.calls(), ++calls);
+  assert.deepEqual(report.observations.find(({ kind, server }) =>
+    kind === 'mcp-streamable-http' && server === failedServer), {
+    ...invalidHttp(failedServer, null), serverHealthCheck: 'failed',
+  });
+  assert.equal(report.results.find((item) => item.id === failedId).status, 'not_verified');
+  assert.equal(report.results.find((item) => item.id === invalidHttpServerCases[1][1]).status, 'pass');
+});
+
+test('malformed invalid HTTP runtime records fail before health or report mutation', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  assert.equal(health.run(start).status, 0);
+  const before = await readFile(f.outputPath, 'utf8');
+  for (const [server] of invalidHttpServerCases) {
+    for (const observation of [
+      invalidHttp(server, { type: 'request', version: 2, pathname: '/', query: [], headers: { 'x-apc-fixture': null } }),
+      invalidHttp(server, { type: 'request', version: 1, pathname: '/', query: [], headers: {} }),
+      invalidHttp(server, { type: 'error', message: '', classification: null }),
+    ]) {
+      const result = health.run({ action: 'record', observation });
+      assert.equal(result.status, 2, result.stderr);
+      assert.equal(await readFile(f.outputPath, 'utf8'), before);
+    }
+  }
+  assert.equal(await health.calls(), 0);
 });
 
 test('record preserves a cleanup warning while keeping successful writability passing', async (t) => {

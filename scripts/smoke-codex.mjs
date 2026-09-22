@@ -187,7 +187,8 @@ try {
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
-  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field']) {
+  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-unknown-field',
+    'recovery-http-fragment', 'recovery-http-duplicate-headers']) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
     if (advertised) advertisedInvalidServers.push(server);
@@ -203,7 +204,7 @@ try {
     });
     assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
     const observation = result.structuredContent;
-    assert.equal(observation?.kind, server === 'http' ? 'mcp-streamable-http' : 'mcp-stdio',
+    assert.equal(observation?.kind, server === 'http' || server.startsWith('recovery-http-') ? 'mcp-streamable-http' : 'mcp-stdio',
       `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });

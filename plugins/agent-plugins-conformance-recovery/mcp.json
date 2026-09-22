@@ -26,6 +26,15 @@
       "command": "node",
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-unknown-field"],
       "conformanceUnknown": true
+    },
+    "recovery-http-fragment": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment"
+    },
+    "recovery-http-duplicate-headers": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:43187/conformance/recovery-http-duplicate-headers",
+      "headers": { "X-Apc-Duplicate": "first", "x-apc-duplicate": "second" }
     }
   }
 }

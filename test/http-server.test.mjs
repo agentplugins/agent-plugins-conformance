@@ -149,6 +149,29 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(initialize.status, 406);
   });
 
+  await t.test('direct SDK transport can run semantically invalid recovery HTTP configs', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    for (const serverName of ['recovery-http-fragment', 'recovery-http-duplicate-headers']) {
+      const configured = mcp.mcpServers[serverName];
+      const client = new Client({ name: 'invalid-config-reference-test', version: '1' });
+      t.after(() => client.close());
+      await client.connect(new StreamableHTTPClientTransport(new URL(configured.url), {
+        requestInit: { headers: configured.headers },
+      }));
+      assert.equal(client.getServerVersion().name, `agent-plugins-conformance-${serverName}`);
+      assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, {
+        kind: 'mcp-streamable-http', server: serverName, evidence: {
+          type: 'request', version: 1, pathname: `/conformance/${serverName}`,
+          query: [], headers: { 'x-apc-fixture': null },
+        },
+      });
+      assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+    }
+  });
+
   await t.test('invalid tool calls produce errors without observations', async (t) => {
     const client = await connect(t);
     for (const args of [{ extra: true }, undefined]) {

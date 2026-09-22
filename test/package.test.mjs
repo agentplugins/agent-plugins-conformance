@@ -80,6 +80,15 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-unknown-field'],
     conformanceUnknown: true,
   });
+  assert.deepEqual(mcp.mcpServers['recovery-http-fragment'], {
+    type: 'streamable-http',
+    url: 'http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment',
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-http-duplicate-headers'], {
+    type: 'streamable-http',
+    url: 'http://127.0.0.1:43187/conformance/recovery-http-duplicate-headers',
+    headers: { 'X-Apc-Duplicate': 'first', 'x-apc-duplicate': 'second' },
+  });
   const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
   assert.equal(relative(recoveryRoot, resolve(recoveryRoot, mcp.mcpServers['recovery-cwd-escape'].cwd)), '..');
   const dataRoot = resolve(recoveryRoot, 'data root');
