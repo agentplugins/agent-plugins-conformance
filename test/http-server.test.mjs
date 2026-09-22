@@ -172,6 +172,57 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     }
   });
 
+  await t.test('userinfo route has a valid control and a deliberately permissive failure witness', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const configured = mcp.mcpServers['recovery-http-userinfo'];
+    const configuredUrl = new URL(configured.url);
+    assert.equal(configuredUrl.username, 'fixture');
+    assert.equal(configuredUrl.password, 'fixture');
+
+    const expected = {
+      kind: 'mcp-streamable-http', server: 'recovery-http-userinfo', evidence: {
+        type: 'request', version: 1, pathname: '/conformance/recovery-http-userinfo',
+        query: [], headers: { 'x-apc-fixture': null },
+      },
+    };
+    const observe = async (transport) => {
+      const client = new Client({ name: 'userinfo-reference-test', version: '1' });
+      t.after(() => client.close());
+      await client.connect(transport);
+      assert.equal(client.getServerVersion().name, 'agent-plugins-conformance-recovery-http-userinfo');
+      assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, expected);
+      assert.deepEqual(JSON.parse(result.content[0].text), expected);
+    };
+
+    const validControl = new URL(configuredUrl);
+    validControl.username = '';
+    validControl.password = '';
+    assert.equal(validControl.pathname, configuredUrl.pathname);
+    await observe(new StreamableHTTPClientTransport(validControl));
+
+    let permissiveRequests = 0;
+    await observe(new StreamableHTTPClientTransport(new URL(configured.url), {
+      // This test-only fetch models an incorrect client accepting the invalid entry.
+      // It deliberately strips userinfo before calling the platform fetch; the SDK does not do that for us.
+      fetch: async (input, init) => {
+        const original = new URL(input instanceof Request ? input.url : String(input));
+        assert.equal(original.username, 'fixture');
+        assert.equal(original.password, 'fixture');
+        const sent = new URL(original);
+        sent.username = '';
+        sent.password = '';
+        permissiveRequests += 1;
+        return fetch(sent, init);
+      },
+    }));
+    assert.ok(permissiveRequests > 0);
+    assert.equal(configuredUrl.username, 'fixture');
+    assert.equal(configuredUrl.password, 'fixture');
+  });
+
   await t.test('invalid tool calls produce errors without observations', async (t) => {
     const client = await connect(t);
     for (const args of [{ extra: true }, undefined]) {
