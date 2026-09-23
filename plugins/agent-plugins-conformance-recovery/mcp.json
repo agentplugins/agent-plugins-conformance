@@ -51,6 +51,10 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-data"],
       "env": { "PLUGIN_DATA": "${PLUGIN_DATA}" }
     },
+    "recovery-http-relative-url": {
+      "type": "streamable-http",
+      "url": "//127.0.0.1:43187/conformance/recovery-http-relative-url"
+    },
     "recovery-http-header-name": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-header-name",

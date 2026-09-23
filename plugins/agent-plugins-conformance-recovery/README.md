@@ -15,6 +15,7 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.stdio.config.unknown-field` | A server with an unknown configuration field is excluded. |
 | `mcp.stdio.env.reserved-plugin-root` | A server that configures `PLUGIN_ROOT` in its `env` is excluded. |
 | `mcp.stdio.env.reserved-plugin-data` | A server that configures `PLUGIN_DATA` in its `env` is excluded. |
+| `mcp.streamable-http.url.relative` | An HTTP server with a scheme-relative URL (`//host/path`) is excluded. |
 | `mcp.streamable-http.url.fragment` | An HTTP server whose URL contains a fragment is excluded. |
 | `mcp.streamable-http.url.userinfo` | An HTTP server whose URL contains user information is excluded. |
 | `mcp.streamable-http.headers.duplicate-names` | An HTTP server with header names that duplicate one another under different casing is excluded. |

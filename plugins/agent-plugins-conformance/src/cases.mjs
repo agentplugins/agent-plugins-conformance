@@ -27,6 +27,7 @@ export const CASES = Object.freeze([
   ['mcp.stdio.args.preservation-and-expansion', 'Argument preservation and expansion', ['7.2.1', '9.2']],
   ['mcp.stdio.env.expansion', 'Environment expansion', ['9.2']],
   ['mcp.streamable-http.tool-availability', 'Streamable HTTP MCP tool evidence', ['6.1', '7.2.1']],
+  ['mcp.streamable-http.url.relative', 'Relative HTTP URL exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.url.fragment', 'HTTP URL fragment exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.url.userinfo', 'HTTP URL user information exclusion', ['7.2.1', '7.2.2']],
   ['mcp.streamable-http.headers.duplicate-names', 'Case-insensitive duplicate HTTP header exclusion', ['7.2.1', '7.2.2']],
