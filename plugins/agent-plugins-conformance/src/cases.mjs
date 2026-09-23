@@ -41,6 +41,7 @@ export const CASES = Object.freeze([
   ['mcp.sse.url.literal-route-and-query', 'Legacy HTTP+SSE literal URL route and query', ['7.2.1']],
   ['mcp.sse.headers.literal-value', 'Legacy HTTP+SSE initial connection literal header value', ['7.2.1']],
   ['mcp.sse.headers.literal-post-value', 'Legacy HTTP+SSE literal POST header value', ['7.2.1']],
+  ['mcp.sse.headers.generated-precedence', 'Legacy HTTP+SSE generated header precedence', ['7.2.1']],
   ['skills.recovery.valid-skill-available', 'Valid skill availability with recoverable invalid configuration', ['5.2', '7.1', '7.2.2', '8.1']],
   ['mcp.stdio.recovery.valid-server-available', 'Valid MCP server availability with recoverable invalid configuration', ['5.2', '7.1', '7.2.2', '8.1']],
   ['skills.recovery.invalid-mcp-document', 'Valid skill availability with a malformed MCP document', ['7.2.2']],

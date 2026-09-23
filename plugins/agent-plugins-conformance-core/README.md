@@ -40,5 +40,6 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.sse.url.literal-route-and-query` | The configured URL path and query are preserved literally. |
 | `mcp.sse.headers.literal-value` | The initial connection preserves the configured header value literally. |
 | `mcp.sse.headers.literal-post-value` | Message requests to the configured origin preserve the configured header value literally. |
+| `mcp.sse.headers.generated-precedence` | A client-generated `Accept` header takes precedence over a conflicting configured value. |
 
 Legacy HTTP+SSE support is optional. Without a successful SSE observation, these checks remain `not_verified`, even when the helper is running.

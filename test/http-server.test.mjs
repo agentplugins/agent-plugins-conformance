@@ -264,6 +264,34 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.literal-post-value').status, 'fail');
   });
 
+  await t.test('legacy SSE generated Accept precedence has passing and faulty client controls', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-core/mcp.json', import.meta.url), 'utf8'));
+    const configured = mcp.mcpServers['sse-header-precedence'];
+    assert.equal(configured.headers.AcCePt, 'application/x-apc-configured');
+    const { client: baseline } = await connectSse(t);
+    const baselineObservation = (await baseline.callTool({ name: 'observe', arguments: {} })).structuredContent;
+    for (const faulty of [false, true]) {
+      const client = new Client({ name: 'sse-precedence-reference-test', version: '1' });
+      t.after(() => client.close());
+      await client.connect(new SSEClientTransport(new URL(configured.url), {
+        requestInit: { headers: configured.headers },
+        fetch: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          if (faulty && (init?.method ?? 'GET') === 'GET') headers.set('accept', configured.headers.AcCePt);
+          return fetch(input, { ...init, headers });
+        },
+      }));
+      const { tools } = await client.listTools();
+      assert.match(tools[0].description, /server ID: sse-header-precedence/);
+      const observation = (await client.callTool({ name: 'observe', arguments: {} })).structuredContent;
+      assert.equal(observation.server, 'sse-header-precedence');
+      assert.equal(observation.evidence.connection.headers.accept, faulty ? configured.headers.AcCePt : 'text/event-stream');
+      const report = buildReport({ schemaVersion: 1, observations: [baselineObservation, observation] });
+      assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.generated-precedence').status,
+        faulty ? 'fail' : 'pass');
+    }
+  });
+
   await t.test('SDK connects despite a conflicting configured Accept header', async (t) => {
     const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-core/mcp.json', import.meta.url), 'utf8'));
     const configured = mcp.mcpServers.http;

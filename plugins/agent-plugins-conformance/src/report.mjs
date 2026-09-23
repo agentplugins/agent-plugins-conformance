@@ -25,7 +25,7 @@ const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
 const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
-const SSE_SERVERS = ['sse'];
+const SSE_SERVERS = ['sse', 'sse-header-precedence'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -373,6 +373,34 @@ export function buildReport(input) {
       ? 'The native SSE attempt returned an error; the exact diagnostic is preserved in the observation.'
       : 'The completed native SSE attempt supplied no usable evidence.';
     for (const id of sseCaseIds) set(id, 'not_verified', detail);
+  }
+
+  const precedenceId = 'mcp.sse.headers.generated-precedence';
+  const precedenceObservation = sse.get('sse-header-precedence');
+  const precedenceEvidence = precedenceObservation?.evidence;
+  if (sseEvidence?.type === 'sse-session' && precedenceEvidence?.type === 'sse-session') {
+    const expectedOrigin = 'http://127.0.0.1:43187';
+    const baselineAccept = sseEvidence.connection.headers.accept;
+    const configuredAccept = precedenceEvidence.connection.headers.accept;
+    const sentinel = 'application/x-apc-configured';
+    const containsSentinel = (value) => typeof value === 'string' && value.split(',')
+      .some((range) => range.split(';', 1)[0].trim().toLowerCase() === sentinel);
+    if (sseEvidence.connection.origin !== expectedOrigin || precedenceEvidence.connection.origin !== expectedOrigin) {
+      set(precedenceId, 'not_verified', 'Both SSE sessions must supply evidence from the configured fixture origin.');
+    } else if (baselineAccept === null) {
+      set(precedenceId, 'not_verified', 'The baseline SSE session supplied no generated Accept header.');
+    } else if (containsSentinel(baselineAccept)) {
+      set(precedenceId, 'not_verified', 'The baseline SSE session unexpectedly contained the configured sentinel media type.');
+    } else if (configuredAccept === baselineAccept) {
+      set(precedenceId, 'pass', 'The configured Accept header did not override the client-generated header.');
+    } else if (containsSentinel(configuredAccept)) {
+      set(precedenceId, 'fail', 'The configured sentinel media type appeared in the observed Accept header.');
+    } else {
+      set(precedenceId, 'not_verified',
+        `Accept header: expected the generated baseline ${JSON.stringify(baselineAccept)}; observed ${configuredAccept === null ? 'missing' : JSON.stringify(configuredAccept)}.`);
+    }
+  } else if (sseObservation || precedenceObservation) {
+    set(precedenceId, 'not_verified', 'Both SSE sessions must supply initial Accept header evidence for comparison.');
   }
 
   const redirect = http.get('http-redirect');

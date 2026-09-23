@@ -223,34 +223,40 @@ try {
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });
   }
-  // SSE is optional. Preserve the native diagnostic even when the loader omits the entry.
-  const sse = status.data.find(({ name }) => name === 'sse');
-  let sseObservation;
-  if (sse && Object.hasOwn(sse.tools, 'observe')) {
-    const result = await rpc('mcpServer/tool/call', {
-      threadId: thread.id, server: 'sse', tool: 'observe', arguments: {},
-    });
-    assert.ok(!result.isError && !result.error, `sse: observe failed: ${JSON.stringify(result)}`);
-    sseObservation = result.structuredContent;
-    assert.equal(sseObservation?.kind, 'mcp-sse', 'sse: missing observation');
-    assert.equal(sseObservation.server, 'sse', 'sse: unexpected observation server');
-  } else {
-    const diagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
-      .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
-    const diagnostic = diagnostics.find((entry) => entry.fields?.server === 'sse' &&
-      entry.fields?.message === 'failed to parse plugin MCP server')?.fields?.error;
-    sseObservation = { kind: 'mcp-sse', server: 'sse', evidence: diagnostic
-      ? { type: 'error', message: diagnostic, classification: null } : null };
+  // SSE is optional. Preserve native diagnostics even when the loader omits entries.
+  const sseObservations = [];
+  for (const server of ['sse', 'sse-header-precedence']) {
+    const entry = status.data.find(({ name }) => name === server);
+    let observation;
+    if (entry && Object.hasOwn(entry.tools, 'observe')) {
+      const result = await rpc('mcpServer/tool/call', {
+        threadId: thread.id, server, tool: 'observe', arguments: {},
+      });
+      assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
+      observation = result.structuredContent;
+      assert.equal(observation?.kind, 'mcp-sse', `${server}: missing observation`);
+      assert.equal(observation.server, server, `${server}: unexpected observation server`);
+    } else {
+      const diagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
+        .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+      const diagnostic = diagnostics.find((item) => item.fields?.server === server &&
+        item.fields?.message === 'failed to parse plugin MCP server')?.fields?.error;
+      observation = { kind: 'mcp-sse', server, evidence: diagnostic
+        ? { type: 'error', message: diagnostic, classification: null } : null };
+    }
+    record({ action: 'record', observation });
+    sseObservations.push(observation);
   }
-  record({ action: 'record', observation: sseObservation });
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  assert.deepEqual(report.observations.find(({ kind }) => kind === 'mcp-sse'), sseObservation,
-    'SSE observation or native diagnostic was not preserved');
+  assert.deepEqual(report.observations.filter(({ kind }) => kind === 'mcp-sse'), sseObservations,
+    'SSE observations or native diagnostics were not preserved');
+  const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    assert.equal(result.status, ['request', 'sse-session'].includes(sseObservation.evidence?.type) &&
-      (result.id !== 'mcp.sse.headers.literal-post-value' || sseObservation.evidence.type === 'sse-session')
-      ? 'pass' : 'not_verified',
-      `${result.id}: unexpected optional SSE outcome`);
+    const successful = result.id === 'mcp.sse.headers.generated-precedence'
+      ? sseObservations.every(({ evidence }) => evidence?.type === 'sse-session')
+      : ['request', 'sse-session'].includes(baselineSse?.type) &&
+        (result.id !== 'mcp.sse.headers.literal-post-value' || baselineSse.type === 'sse-session');
+    assert.equal(result.status, successful ? 'pass' : 'not_verified', `${result.id}: unexpected optional SSE outcome`);
   }
   assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,
     'passed', 'HTTP fixture health check did not pass');

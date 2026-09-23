@@ -3,14 +3,18 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { requestEvidence } from './http-request.mjs';
 
-const connectionPath = '/conformance/sse';
+const fixtures = new Map([
+  ['/conformance/sse', 'sse'],
+  ['/conformance/sse-header-precedence', 'sse-header-precedence'],
+]);
 const messagePath = '/conformance/sse/messages';
 const sessions = new Map();
 const origin = 'http://127.0.0.1:43187';
 
 export async function handleSse(request, response, pathname) {
-  if (pathname !== connectionPath && pathname !== messagePath) return false;
-  const method = pathname === connectionPath ? 'GET' : 'POST';
+  const fixtureId = fixtures.get(pathname);
+  if (!fixtureId && pathname !== messagePath) return false;
+  const method = fixtureId ? 'GET' : 'POST';
   if (request.method !== method) {
     response.writeHead(405, { Allow: method }).end();
     return true;
@@ -50,7 +54,7 @@ export async function handleSse(request, response, pathname) {
   }
   const { pathname: initialPath, query, headers } = requestEvidence(request);
   const observation = {
-    kind: 'mcp-sse', server: 'sse', evidence: {
+    kind: 'mcp-sse', server: fixtureId, evidence: {
       type: 'sse-session', version: 1,
       connection: {
         origin, pathname: initialPath, query,
@@ -60,11 +64,11 @@ export async function handleSse(request, response, pathname) {
       messages: [],
     },
   };
-  const server = new Server({ name: 'agent-plugins-conformance-sse', version: '0.1.0' },
+  const server = new Server({ name: `agent-plugins-conformance-${fixtureId}`, version: '0.1.0' },
     { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: 'observe',
-    description: 'Agent Plugins Conformance — Core, server ID: sse. Return this legacy SSE session’s initial connection and message-request evidence, including public fixture and protocol headers. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
+    description: `Agent Plugins Conformance — Core, server ID: ${fixtureId}. Return this legacy SSE session’s initial connection and message-request evidence, including public fixture and protocol headers. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }] }));
