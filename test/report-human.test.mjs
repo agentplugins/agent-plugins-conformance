@@ -39,6 +39,7 @@ function addRecovery(value) {
     { kind: 'mcp-discovery', server: 'recovery-env-plugin-root', advertised: false },
     { kind: 'mcp-discovery', server: 'recovery-env-plugin-data', advertised: false },
     { kind: 'mcp-discovery', server: 'recovery-cwd-symlink-escape', advertised: false },
+    { kind: 'mcp-discovery', server: 'recovery-cwd-invalid-form', advertised: false },
   );
   return value;
 }
@@ -50,9 +51,9 @@ test('complete stdio and recovery evidence leaves optional HTTP checks unverifie
     '',
     'Checks       Passed  Failed  Not verified',
     'Skills            3       0             0',
-    'MCP              19       0             9',
+    'MCP              20       0             9',
     'Filesystem        4       0             0',
-    'Total            26       0             9',
+    'Total            27       0             9',
   ].join('\n'));
   const missing = human.split('\n\nNot verified\n')[1];
   for (const id of [
@@ -74,7 +75,7 @@ test('all-unverified human report preserves every saved missing-evidence result'
   value.observations = [];
   const human = formatReport(buildReport(value));
   assert.match(human, /Skills\s+0\s+0\s+3/);
-  assert.match(human, /MCP\s+0\s+0\s+28/);
+  assert.match(human, /MCP\s+0\s+0\s+29/);
   assert.match(human, /Filesystem\s+0\s+0\s+4/);
   assert.match(human, /Missing skill observations: conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
@@ -86,7 +87,7 @@ test('mixed human report puts failures before missing-evidence details', () => {
   value.observations = [value.observations[2]];
   value.observations[0].evidence.env.APC_VALUE = 'incorrect configured value';
   const human = formatReport(buildReport(value));
-  assert.match(human, /MCP\s+6\s+1\s+21/);
+  assert.match(human, /MCP\s+6\s+1\s+22/);
   assert.match(human, /Filesystem\s+1\s+0\s+3/);
   assert.match(human, /Configured environment \(mcp.stdio.env.configured-value\)/);
   assert.match(human, /"fixture value with spaces"/);
@@ -142,7 +143,7 @@ test('human report renders saved warnings independently of result status', () =>
   const writable = value.results.find(({ id }) => id === 'filesystem.data.writable');
   writable.status = 'not_verified';
   writable.warning = 'Saved cleanup warning for /state/plugin/leftover.';
-  value.summary = { pass: 15, fail: 0, not_verified: 20, total: 35 };
+  value.summary = { pass: 15, fail: 0, not_verified: 21, total: 36 };
   value.observations = [];
 
   const human = formatReport(value);

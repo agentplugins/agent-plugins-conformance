@@ -4,6 +4,7 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const INVALID_STDIO_SERVERS = Object.freeze({
+  'recovery-cwd-invalid-form': 'mcp.stdio.cwd.invalid-form',
   'recovery-cwd-escape': 'mcp.stdio.cwd.plugin-relative-escape',
   'recovery-cwd-data-escape': 'mcp.stdio.cwd.plugin-data-escape',
   'recovery-cwd-symlink-escape': 'filesystem.containment.cwd-symlink-escape',

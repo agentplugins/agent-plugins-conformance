@@ -16942,7 +16942,8 @@ var identity = [
   "recovery-cwd-symlink-escape",
   "recovery-unknown-field",
   "recovery-env-plugin-root",
-  "recovery-env-plugin-data"
+  "recovery-env-plugin-data",
+  "recovery-cwd-invalid-form"
 ].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 function inspectSymlinkCwd() {
