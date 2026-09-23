@@ -62,7 +62,7 @@ const invalidHttpServerCases = [
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 25, total: 41 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 26, total: 42 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -75,19 +75,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 25, total: 41 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 26, total: 42 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 39, total: 41 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 40, total: 42 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 22, total: 41 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 23, total: 42 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -110,7 +110,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 41, total: 41 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 42, total: 42 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -121,7 +121,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 39, total: 41 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 40, total: 42 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -136,11 +136,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 41, total: 41 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 42, total: 42 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 34);
+  assert.equal(mcp.length, 35);
   assert.equal(report.results.filter(({ id }) => id.startsWith('filesystem.')).length, 4);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
@@ -556,7 +556,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 21, total: 41 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 22, total: 42 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));
@@ -667,16 +667,36 @@ const sseObservation = () => ({
     headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
   },
 });
+const SSE_ORIGIN = 'http://127.0.0.1:43187';
+const SSE_LITERAL_HEADER = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
+const sseConnection = () => ({
+  origin: SSE_ORIGIN,
+  pathname: '/conformance/sse',
+  query: [['value', '$APC_SSE_VALUE']],
+  headers: { 'x-apc-fixture': SSE_LITERAL_HEADER, accept: 'text/event-stream' },
+});
+const sseSessionObservation = () => ({
+  kind: 'mcp-sse', server: 'sse', evidence: {
+    type: 'sse-session', version: 1,
+    connection: sseConnection(),
+    redirectSource: null,
+    messages: [
+      { origin: SSE_ORIGIN, headers: { 'x-apc-fixture': SSE_LITERAL_HEADER } },
+      { origin: SSE_ORIGIN, headers: { 'x-apc-fixture': SSE_LITERAL_HEADER } },
+    ],
+  },
+});
 const sseResults = (report) => report.results.filter(({ id }) => [
   'mcp.sse.tool-availability',
   'mcp.sse.url.literal-route-and-query',
   'mcp.sse.headers.literal-value',
+  'mcp.sse.headers.literal-post-value',
 ].includes(id));
 
 test('native SSE request evidence passes availability and evaluates URL and initial header independently', () => {
   const observation = sseObservation();
   const report = buildReport({ schemaVersion: 1, observations: [observation] });
-  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass']);
+  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass', 'not_verified']);
   assert.deepEqual(report.observations, [observation]);
   assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
 
@@ -685,7 +705,7 @@ test('native SSE request evidence passes availability and evaluates URL and init
   observation.evidence.headers['x-apc-fixture'] = 'expanded';
   assert.equal(report.observations[0].evidence.pathname, '/conformance/sse');
   assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
-    ['pass', 'fail', 'fail']);
+    ['pass', 'fail', 'fail', 'not_verified']);
 });
 
 test('SSE URL evidence preserves the literal route and one ordered decoded query pair', () => {
@@ -699,17 +719,17 @@ test('SSE URL evidence preserves the literal route and one ordered decoded query
     const observation = sseObservation();
     Object.assign(observation.evidence, { pathname, query });
     assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
-      ['pass', 'fail', 'pass']);
+      ['pass', 'fail', 'pass', 'not_verified']);
   }
 });
 
 test('SSE path, query, and initial header mismatches fail only their specific literal checks', () => {
   for (const [modify, statuses] of [
-    [(evidence) => { evidence.pathname = '/other/sse'; }, ['pass', 'fail', 'pass']],
-    [(evidence) => { evidence.query = [['value', 'expanded']]; }, ['pass', 'fail', 'pass']],
-    [(evidence) => { evidence.headers['x-apc-fixture'] = 'expanded'; }, ['pass', 'pass', 'fail']],
+    [(evidence) => { evidence.connection.pathname = '/other/sse'; }, ['pass', 'fail', 'pass', 'pass']],
+    [(evidence) => { evidence.connection.query = [['value', 'expanded']]; }, ['pass', 'fail', 'pass', 'pass']],
+    [(evidence) => { evidence.connection.headers['x-apc-fixture'] = 'expanded'; }, ['pass', 'pass', 'fail', 'pass']],
   ]) {
-    const observation = sseObservation();
+    const observation = sseSessionObservation();
     modify(observation.evidence);
     assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
       statuses);
@@ -718,17 +738,84 @@ test('SSE path, query, and initial header mismatches fail only their specific li
 
 test('missing, null, and error SSE evidence remain unverified and preserve exact diagnostics', () => {
   assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [] })).map(({ status }) => status),
-    ['not_verified', 'not_verified', 'not_verified']);
+    ['not_verified', 'not_verified', 'not_verified', 'not_verified']);
   for (const evidence of [null, { type: 'error', message: 'native SSE failure\nwith detail', classification: null }]) {
     const observation = { kind: 'mcp-sse', server: 'sse', evidence };
     const report = buildReport({ schemaVersion: 1, observations: [observation] });
-    assert.deepEqual(sseResults(report).map(({ status }) => status), ['not_verified', 'not_verified', 'not_verified']);
+    assert.deepEqual(sseResults(report).map(({ status }) => status),
+      ['not_verified', 'not_verified', 'not_verified', 'not_verified']);
     assert.deepEqual(report.observations, [observation]);
     assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
     const detail = sseResults(report)[0].detail;
     if (evidence === null) assert.match(detail, /no usable evidence/);
     else assert.match(detail, /exact diagnostic is preserved in the observation/);
   }
+});
+
+test('SSE session evidence evaluates the initial connection and every POST, then round trips canonically', () => {
+  const observation = sseSessionObservation();
+  observation.evidence.redirectSource = {
+    origin: 'http://127.0.0.1:43188',
+    pathname: '/conformance/sse-redirect',
+    query: [['source', 'redirect']],
+    headers: { 'x-apc-fixture': null, accept: 'text/event-stream' },
+  };
+  const report = buildReport({ schemaVersion: 1, observations: [observation] });
+  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass', 'pass']);
+  assert.deepEqual(report.observations, [observation]);
+  assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+
+  observation.evidence.connection.query[0][1] = 'changed-after-report';
+  observation.evidence.redirectSource.headers.accept = 'changed-after-report';
+  observation.evidence.messages[0].headers['x-apc-fixture'] = 'changed-after-report';
+  assert.equal(report.observations[0].evidence.connection.query[0][1], '$APC_SSE_VALUE');
+  assert.equal(report.observations[0].evidence.redirectSource.headers.accept, 'text/event-stream');
+  assert.equal(report.observations[0].evidence.messages[0].headers['x-apc-fixture'], SSE_LITERAL_HEADER);
+});
+
+test('SSE literal POST evidence requires same-origin messages and retains an earlier wrong header', () => {
+  const empty = sseSessionObservation();
+  empty.evidence.messages = [];
+  assert.equal(sseResults(buildReport({ schemaVersion: 1, observations: [empty] }))[3].status, 'not_verified');
+
+  const unexpectedOrigin = sseSessionObservation();
+  unexpectedOrigin.evidence.messages[0].origin = 'http://127.0.0.1:43188';
+  assert.equal(sseResults(buildReport({ schemaVersion: 1, observations: [unexpectedOrigin] }))[3].status, 'not_verified');
+
+  const wrongThenCorrect = sseSessionObservation();
+  wrongThenCorrect.evidence.messages[0].headers['x-apc-fixture'] = 'expanded';
+  const result = sseResults(buildReport({ schemaVersion: 1, observations: [wrongThenCorrect] }))[3];
+  assert.equal(result.status, 'fail');
+  assert.match(result.detail, /POST message 0/);
+  assert.match(result.detail, /expected .*; observed "expanded"/);
+});
+
+test('SSE session evidence rejects malformed nested fields and is not accepted for Streamable HTTP', () => {
+  const malformed = [
+    (evidence) => { evidence.extra = true; },
+    (evidence) => { evidence.version = 2; },
+    (evidence) => { delete evidence.connection; },
+    (evidence) => { evidence.connection.extra = true; },
+    (evidence) => { evidence.connection.origin = null; },
+    (evidence) => { evidence.connection.query = [['value']]; },
+    (evidence) => { delete evidence.connection.headers.accept; },
+    (evidence) => { evidence.connection.headers.accept = false; },
+    (evidence) => { evidence.redirectSource = {}; },
+    (evidence) => { evidence.messages = {}; },
+    (evidence) => { delete evidence.messages[0].origin; },
+    (evidence) => { evidence.messages[0].origin = null; },
+    (evidence) => { evidence.messages[0].headers.extra = true; },
+    (evidence) => { delete evidence.messages[0].headers['x-apc-fixture']; },
+    (evidence) => { evidence.messages[0].headers['x-apc-fixture'] = false; },
+  ];
+  for (const modify of malformed) {
+    const observation = sseSessionObservation();
+    modify(observation.evidence);
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }), TypeError);
+  }
+  const http = httpObservation();
+  http.evidence = sseSessionObservation().evidence;
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [http] }), /expected one of: request, error/);
 });
 
 test('SSE observations reject malformed schemas, noncanonical identities, health fields, and duplicates', () => {

@@ -247,7 +247,9 @@ try {
   assert.deepEqual(report.observations.find(({ kind }) => kind === 'mcp-sse'), sseObservation,
     'SSE observation or native diagnostic was not preserved');
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    assert.equal(result.status, sseObservation.evidence?.type === 'request' ? 'pass' : 'not_verified',
+    assert.equal(result.status, ['request', 'sse-session'].includes(sseObservation.evidence?.type) &&
+      (result.id !== 'mcp.sse.headers.literal-post-value' || sseObservation.evidence.type === 'sse-session')
+      ? 'pass' : 'not_verified',
       `${result.id}: unexpected optional SSE outcome`);
   }
   assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,

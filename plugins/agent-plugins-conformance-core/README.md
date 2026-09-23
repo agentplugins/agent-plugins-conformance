@@ -39,5 +39,6 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.sse.tool-availability` | The client exposes the legacy HTTP+SSE tool and it returns a valid observation. |
 | `mcp.sse.url.literal-route-and-query` | The configured URL path and query are preserved literally. |
 | `mcp.sse.headers.literal-value` | The initial connection preserves the configured header value literally. |
+| `mcp.sse.headers.literal-post-value` | Message requests to the configured origin preserve the configured header value literally. |
 
 Legacy HTTP+SSE support is optional. Without a successful SSE observation, these checks remain `not_verified`, even when the helper is running.

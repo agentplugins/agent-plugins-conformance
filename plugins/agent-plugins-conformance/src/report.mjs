@@ -69,9 +69,38 @@ function array(value, at) {
   if (!Array.isArray(value)) invalid(at, 'expected an array');
 }
 
-function validateHttpEvidence(evidence, at) {
-  object(evidence, ['type', 'version', 'pathname', 'query', 'headers', 'message', 'classification'], ['type'], at);
-  member(evidence.type, ['request', 'error'], `${at}.type`);
+function nullableString(value, at) {
+  if (value !== null && typeof value !== 'string') invalid(at, 'expected a string or null');
+}
+
+function validateQuery(query, at) {
+  array(query, at);
+  for (const [i, pair] of query.entries()) {
+    const pairAt = `${at}[${i}]`;
+    array(pair, pairAt);
+    if (pair.length !== 2) invalid(pairAt, 'expected a name and value pair');
+    for (const [j, value] of pair.entries()) {
+      if (typeof value !== 'string') invalid(`${pairAt}[${j}]`, 'expected a string');
+    }
+  }
+}
+
+function validateSseConnection(connection, at) {
+  object(connection, ['origin', 'pathname', 'query', 'headers'], ['origin', 'pathname', 'query', 'headers'], at);
+  if (typeof connection.origin !== 'string') invalid(`${at}.origin`, 'expected a string');
+  if (typeof connection.pathname !== 'string') invalid(`${at}.pathname`, 'expected a string');
+  validateQuery(connection.query, `${at}.query`);
+  object(connection.headers, ['x-apc-fixture', 'accept'], ['x-apc-fixture', 'accept'], `${at}.headers`);
+  nullableString(connection.headers['x-apc-fixture'], `${at}.headers.x-apc-fixture`);
+  nullableString(connection.headers.accept, `${at}.headers.accept`);
+}
+
+function validateHttpEvidence(evidence, at, allowedTypes = ['request', 'error']) {
+  object(evidence, [
+    'type', 'version', 'pathname', 'query', 'headers', 'message', 'classification',
+    'connection', 'redirectSource', 'messages',
+  ], ['type'], at);
+  member(evidence.type, allowedTypes, `${at}.type`);
   if (evidence.type === 'error') {
     object(evidence, ['type', 'message', 'classification'], ['type', 'message', 'classification'], at);
     string(evidence.message, `${at}.message`);
@@ -80,23 +109,56 @@ function validateHttpEvidence(evidence, at) {
     }
     return;
   }
+  if (evidence.type === 'sse-session') {
+    object(evidence, ['type', 'version', 'connection', 'redirectSource', 'messages'],
+      ['type', 'version', 'connection', 'redirectSource', 'messages'], at);
+    if (evidence.version !== 1) invalid(`${at}.version`, 'expected 1');
+    validateSseConnection(evidence.connection, `${at}.connection`);
+    if (evidence.redirectSource !== null) validateSseConnection(evidence.redirectSource, `${at}.redirectSource`);
+    array(evidence.messages, `${at}.messages`);
+    for (const [i, message] of evidence.messages.entries()) {
+      const messageAt = `${at}.messages[${i}]`;
+      object(message, ['origin', 'headers'], ['origin', 'headers'], messageAt);
+      if (typeof message.origin !== 'string') invalid(`${messageAt}.origin`, 'expected a string');
+      object(message.headers, ['x-apc-fixture'], ['x-apc-fixture'], `${messageAt}.headers`);
+      nullableString(message.headers['x-apc-fixture'], `${messageAt}.headers.x-apc-fixture`);
+    }
+    return;
+  }
   object(evidence, ['type', 'version', 'pathname', 'query', 'headers'],
     ['type', 'version', 'pathname', 'query', 'headers'], at);
   if (evidence.version !== 1) invalid(`${at}.version`, 'expected 1');
   if (typeof evidence.pathname !== 'string') invalid(`${at}.pathname`, 'expected a string');
-  array(evidence.query, `${at}.query`);
-  for (const [i, pair] of evidence.query.entries()) {
-    const pairAt = `${at}.query[${i}]`;
-    array(pair, pairAt);
-    if (pair.length !== 2) invalid(pairAt, 'expected a name and value pair');
-    for (const [j, value] of pair.entries()) {
-      if (typeof value !== 'string') invalid(`${pairAt}[${j}]`, 'expected a string');
-    }
-  }
+  validateQuery(evidence.query, `${at}.query`);
   object(evidence.headers, ['x-apc-fixture'], ['x-apc-fixture'], `${at}.headers`);
-  if (evidence.headers['x-apc-fixture'] !== null && typeof evidence.headers['x-apc-fixture'] !== 'string') {
-    invalid(`${at}.headers.x-apc-fixture`, 'expected a string or null');
+  nullableString(evidence.headers['x-apc-fixture'], `${at}.headers.x-apc-fixture`);
+}
+
+function canonicalHttpEvidence(evidence) {
+  if (evidence === null) return null;
+  if (evidence.type === 'error') {
+    return { type: 'error', message: evidence.message, classification: evidence.classification };
   }
+  if (evidence.type === 'sse-session') {
+    const connection = ({ origin, pathname, query, headers }) => ({
+      origin, pathname, query: query.map((pair) => [...pair]),
+      headers: { 'x-apc-fixture': headers['x-apc-fixture'], accept: headers.accept },
+    });
+    return {
+      type: 'sse-session', version: evidence.version,
+      connection: connection(evidence.connection),
+      redirectSource: evidence.redirectSource === null ? null : connection(evidence.redirectSource),
+      messages: evidence.messages.map((message) => ({
+        origin: message.origin,
+        headers: { 'x-apc-fixture': message.headers['x-apc-fixture'] },
+      })),
+    };
+  }
+  return {
+    type: 'request', version: evidence.version, pathname: evidence.pathname,
+    query: evidence.query.map((pair) => [...pair]),
+    headers: { 'x-apc-fixture': evidence.headers['x-apc-fixture'] },
+  };
 }
 
 export function observationKey(value) {
@@ -144,7 +206,7 @@ export function validateInput(input, { recording = false } = {}) {
       if (sse.has(observation.server)) invalid(at, `duplicate mcp-sse observation: ${observation.server}`);
       sse.set(observation.server, observation);
       if (observation.evidence !== null) {
-        validateHttpEvidence(observation.evidence, `${at}.evidence`);
+        validateHttpEvidence(observation.evidence, `${at}.evidence`, ['request', 'error', 'sse-session']);
         if (observation.evidence.type === 'error' && observation.evidence.classification !== null) {
           invalid(`${at}.evidence.classification`, 'expected null');
         }
@@ -272,21 +334,40 @@ export function buildReport(input) {
     'mcp.sse.tool-availability',
     'mcp.sse.url.literal-route-and-query',
     'mcp.sse.headers.literal-value',
+    'mcp.sse.headers.literal-post-value',
   ];
-  if (sseObservation?.evidence?.type === 'request') {
-    const evidence = sseObservation.evidence;
+  const sseEvidence = sseObservation?.evidence;
+  const sseConnection = sseEvidence?.type === 'request' ? sseEvidence
+    : sseEvidence?.type === 'sse-session' ? sseEvidence.connection : null;
+  if (sseConnection) {
     set('mcp.sse.tool-availability', 'pass', 'Valid runtime evidence supplied for the SSE server.');
     const expectedPathname = '/conformance/sse';
     const expectedQuery = [['value', '$APC_SSE_VALUE']];
     const differences = [];
-    if (evidence.pathname !== expectedPathname) differences.push(mismatch('URL pathname', expectedPathname, evidence.pathname));
-    if (JSON.stringify(evidence.query) !== JSON.stringify(expectedQuery)) differences.push(mismatch('URL query pairs', expectedQuery, evidence.query));
+    if (sseConnection.pathname !== expectedPathname) differences.push(mismatch('URL pathname', expectedPathname, sseConnection.pathname));
+    if (JSON.stringify(sseConnection.query) !== JSON.stringify(expectedQuery)) differences.push(mismatch('URL query pairs', expectedQuery, sseConnection.query));
     check('mcp.sse.url.literal-route-and-query', differences.length === 0,
       'URL pathname and decoded query pairs preserve the configured literal values.', differences.join(' '));
     const expectedHeader = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
-    check('mcp.sse.headers.literal-value', evidence.headers['x-apc-fixture'] === expectedHeader,
+    check('mcp.sse.headers.literal-value', sseConnection.headers['x-apc-fixture'] === expectedHeader,
       'The initial connection preserves the configured header value literally.',
-      mismatch('Initial x-apc-fixture header', expectedHeader, evidence.headers['x-apc-fixture']));
+      mismatch('Initial x-apc-fixture header', expectedHeader, sseConnection.headers['x-apc-fixture']));
+    if (sseEvidence.type === 'sse-session') {
+      const expectedOrigin = 'http://127.0.0.1:43187';
+      if (sseEvidence.messages.length === 0) {
+        set('mcp.sse.headers.literal-post-value', 'not_verified', 'No POST message evidence was supplied.');
+      } else if (sseEvidence.messages.some((message) => message.origin !== expectedOrigin)) {
+        set('mcp.sse.headers.literal-post-value', 'not_verified',
+          'POST message evidence included an unexpected origin, so literal header delivery to the fixture origin was not evaluated.');
+      } else {
+        const postDifferences = sseEvidence.messages.flatMap((message, index) =>
+          message.headers['x-apc-fixture'] === expectedHeader ? [] : [
+            mismatch(`POST message ${index} x-apc-fixture header`, expectedHeader, message.headers['x-apc-fixture']),
+          ]);
+        check('mcp.sse.headers.literal-post-value', postDifferences.length === 0,
+          'Every observed POST message preserves the configured header value literally.', postDifferences.join(' '));
+      }
+    }
   } else if (sseObservation) {
     const detail = sseObservation.evidence?.type === 'error'
       ? 'The native SSE attempt returned an error; the exact diagnostic is preserved in the observation.'
@@ -514,24 +595,12 @@ export function buildReport(input) {
       }),
       ...HTTP_SERVERS.filter((server) => http.has(server)).map((server) => {
         const observation = http.get(server);
-        const evidence = observation.evidence === null ? null : observation.evidence.type === 'error'
-          ? { type: 'error', message: observation.evidence.message, classification: observation.evidence.classification }
-          : {
-              type: 'request', version: observation.evidence.version, pathname: observation.evidence.pathname,
-              query: observation.evidence.query.map((pair) => [...pair]),
-              headers: { 'x-apc-fixture': observation.evidence.headers['x-apc-fixture'] },
-            };
+        const evidence = canonicalHttpEvidence(observation.evidence);
         return { kind: 'mcp-streamable-http', server, evidence, serverHealthCheck: observation.serverHealthCheck };
       }),
       ...SSE_SERVERS.filter((server) => sse.has(server)).map((server) => {
         const observation = sse.get(server);
-        const evidence = observation.evidence === null ? null : observation.evidence.type === 'error'
-          ? { type: 'error', message: observation.evidence.message, classification: null }
-          : {
-              type: 'request', version: observation.evidence.version, pathname: observation.evidence.pathname,
-              query: observation.evidence.query.map((pair) => [...pair]),
-              headers: { 'x-apc-fixture': observation.evidence.headers['x-apc-fixture'] },
-            };
+        const evidence = canonicalHttpEvidence(observation.evidence);
         return { kind: 'mcp-sse', server, evidence };
       }),
     ],

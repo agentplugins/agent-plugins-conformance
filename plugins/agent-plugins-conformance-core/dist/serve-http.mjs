@@ -13467,13 +13467,13 @@ var numericOriginMap = {
 };
 var $ZodCheckLessThan = /* @__PURE__ */ $constructor("$ZodCheckLessThan", (inst, def) => {
   $ZodCheck.init(inst, def);
-  const origin = numericOriginMap[typeof def.value];
+  const origin2 = numericOriginMap[typeof def.value];
   inst._zod.check = (payload) => {
     if (def.inclusive ? payload.value <= def.value : payload.value < def.value) {
       return;
     }
     payload.issues.push({
-      origin: numericOriginMap[typeof payload.value] ?? origin,
+      origin: numericOriginMap[typeof payload.value] ?? origin2,
       code: "too_big",
       maximum: typeof def.value === "object" ? def.value.getTime() : def.value,
       input: payload.value,
@@ -13485,13 +13485,13 @@ var $ZodCheckLessThan = /* @__PURE__ */ $constructor("$ZodCheckLessThan", (inst,
 });
 var $ZodCheckGreaterThan = /* @__PURE__ */ $constructor("$ZodCheckGreaterThan", (inst, def) => {
   $ZodCheck.init(inst, def);
-  const origin = numericOriginMap[typeof def.value];
+  const origin2 = numericOriginMap[typeof def.value];
   inst._zod.check = (payload) => {
     if (def.inclusive ? payload.value >= def.value : payload.value > def.value) {
       return;
     }
     payload.issues.push({
-      origin: numericOriginMap[typeof payload.value] ?? origin,
+      origin: numericOriginMap[typeof payload.value] ?? origin2,
       code: "too_small",
       minimum: typeof def.value === "object" ? def.value.getTime() : def.value,
       input: payload.value,
@@ -13526,14 +13526,14 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
   $ZodCheck.init(inst, def);
   def.format = def.format || "float64";
   const isInt = def.format?.includes("int");
-  const origin = isInt ? "int" : "number";
+  const origin2 = isInt ? "int" : "number";
   const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
   inst._zod.check = (payload) => {
     const input = payload.value;
     if (isInt) {
       if (!Number.isInteger(input)) {
         payload.issues.push({
-          expected: origin,
+          expected: origin2,
           format: def.format,
           code: "invalid_type",
           continue: false,
@@ -13550,7 +13550,7 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
             maximum: Number.MAX_SAFE_INTEGER,
             note: "Integers must be within the safe integer range.",
             inst,
-            origin,
+            origin: origin2,
             inclusive: true,
             continue: !def.abort
           });
@@ -13561,7 +13561,7 @@ var $ZodCheckNumberFormat = /* @__PURE__ */ $constructor("$ZodCheckNumberFormat"
             minimum: Number.MIN_SAFE_INTEGER,
             note: "Integers must be within the safe integer range.",
             inst,
-            origin,
+            origin: origin2,
             inclusive: true,
             continue: !def.abort
           });
@@ -13603,9 +13603,9 @@ var $ZodCheckMaxLength = /* @__PURE__ */ $constructor("$ZodCheckMaxLength", (ins
     const length = typeof input === "string" && units > def.maximum ? codePointLength(input) : units;
     if (length <= def.maximum)
       return;
-    const origin = getLengthableOrigin(input);
+    const origin2 = getLengthableOrigin(input);
     payload.issues.push({
-      origin,
+      origin: origin2,
       code: "too_big",
       maximum: def.maximum,
       inclusive: true,
@@ -13625,9 +13625,9 @@ var $ZodCheckMinLength = /* @__PURE__ */ $constructor("$ZodCheckMinLength", (ins
     const length = typeof input === "string" && units >= def.minimum && units < def.minimum * 2 ? codePointLength(input) : units;
     if (length >= def.minimum)
       return;
-    const origin = getLengthableOrigin(input);
+    const origin2 = getLengthableOrigin(input);
     payload.issues.push({
-      origin,
+      origin: origin2,
       code: "too_small",
       minimum: def.minimum,
       inclusive: true,
@@ -13647,10 +13647,10 @@ var $ZodCheckLengthEquals = /* @__PURE__ */ $constructor("$ZodCheckLengthEquals"
     const length = typeof input === "string" && units >= def.length && units <= def.length * 2 ? codePointLength(input) : units;
     if (length === def.length)
       return;
-    const origin = getLengthableOrigin(input);
+    const origin2 = getLengthableOrigin(input);
     const tooBig = length > def.length;
     payload.issues.push({
-      origin,
+      origin: origin2,
       ...tooBig ? { code: "too_big", maximum: def.length } : { code: "too_small", minimum: def.length },
       inclusive: true,
       exact: true,
@@ -15743,8 +15743,8 @@ var error = () => {
     set: { unit: "items", verb: "to have" },
     map: { unit: "entries", verb: "to have" }
   };
-  function getSizing(origin) {
-    return Sizable[origin] ?? null;
+  function getSizing(origin2) {
+    return Sizable[origin2] ?? null;
   }
   const FormatDictionary = {
     regex: "input",
@@ -24049,6 +24049,7 @@ data: ${JSON.stringify(message)}
 var connectionPath = "/conformance/sse";
 var messagePath = "/conformance/sse/messages";
 var sessions = /* @__PURE__ */ new Map();
+var origin = "http://127.0.0.1:43187";
 async function handleSse(request, response, pathname2) {
   if (pathname2 !== connectionPath && pathname2 !== messagePath) return false;
   const method = pathname2 === connectionPath ? "GET" : "POST";
@@ -24063,6 +24064,12 @@ async function handleSse(request, response, pathname2) {
       response.writeHead(404).end("Unknown SSE session");
       return true;
     }
+    session.observation.evidence.messages.push({
+      origin,
+      headers: {
+        "x-apc-fixture": request.headers["x-apc-fixture"] ?? null
+      }
+    });
     try {
       await session.transport.handlePostMessage(request, response);
     } catch (error2) {
@@ -24082,14 +24089,30 @@ async function handleSse(request, response, pathname2) {
     response.writeHead(403).end(invalidHeaders);
     return true;
   }
-  const observation = { kind: "mcp-sse", server: "sse", evidence: requestEvidence(request) };
+  const { pathname: initialPath, query, headers } = requestEvidence(request);
+  const observation = {
+    kind: "mcp-sse",
+    server: "sse",
+    evidence: {
+      type: "sse-session",
+      version: 1,
+      connection: {
+        origin,
+        pathname: initialPath,
+        query,
+        headers: { ...headers, accept: request.headers.accept ?? null }
+      },
+      redirectSource: null,
+      messages: []
+    }
+  };
   const server = new Server(
     { name: "agent-plugins-conformance-sse", version: "0.1.0" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: "observe",
-    description: "Agent Plugins Conformance \u2014 Core, server ID: sse. Return this legacy SSE connection\u2019s initial URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+    description: "Agent Plugins Conformance \u2014 Core, server ID: sse. Return this legacy SSE session\u2019s initial connection and message-request evidence, including public fixture and protocol headers. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }] }));
@@ -24100,9 +24123,10 @@ async function handleSse(request, response, pathname2) {
     if (!params.arguments || typeof params.arguments !== "object" || Array.isArray(params.arguments) || Object.keys(params.arguments).length !== 0) {
       return { isError: true, content: [{ type: "text", text: "observe requires an empty object" }] };
     }
-    return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
+    const snapshot = structuredClone(observation);
+    return { content: [{ type: "text", text: JSON.stringify(snapshot) }], structuredContent: snapshot };
   });
-  sessions.set(transport.sessionId, { server, transport });
+  sessions.set(transport.sessionId, { server, transport, observation });
   response.once("close", () => {
     sessions.delete(transport.sessionId);
     void server.close();

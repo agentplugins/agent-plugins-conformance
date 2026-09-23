@@ -176,8 +176,17 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
   assert.equal(health.run({ action: 'record', observation: control }).status, 0);
   const diagnostic = 'Agent Plugins legacy SSE transport is not supported\n  exact detail\t';
   const runtime = { ...http().evidence, pathname: '/conformance/sse', query: [['value', '$APC_SSE_VALUE']] };
+  const session = {
+    type: 'sse-session', version: 1,
+    connection: {
+      origin: 'http://127.0.0.1:43187', pathname: runtime.pathname, query: runtime.query,
+      headers: { ...runtime.headers, accept: 'text/event-stream' },
+    },
+    redirectSource: null,
+    messages: [{ origin: 'http://127.0.0.1:43187', headers: { ...runtime.headers } }],
+  };
   for (const evidence of [
-    { type: 'error', message: diagnostic, classification: null }, runtime, null,
+    { type: 'error', message: diagnostic, classification: null }, runtime, session, null,
     { type: 'error', message: diagnostic, classification: null },
   ]) {
     const observation = { kind: 'mcp-sse', server: 'sse', evidence };
@@ -186,7 +195,9 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
     const report = await f.read();
     assert.deepEqual(report, expected([{ ...control, serverHealthCheck: 'passed' }, observation]));
     assert.ok(report.results.filter(({ id }) => id.startsWith('mcp.sse.'))
-      .every(({ status }) => status === (evidence?.type === 'request' ? 'pass' : 'not_verified')));
+      .every(({ id, status }) => status === (
+        evidence?.type === 'sse-session' || evidence?.type === 'request' && id !== 'mcp.sse.headers.literal-post-value'
+          ? 'pass' : 'not_verified')));
     assert.equal(await health.calls(), 1);
   }
   const summary = spawnSync(process.execPath, [fileURLToPath(new URL(

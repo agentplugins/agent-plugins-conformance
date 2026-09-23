@@ -6,6 +6,7 @@ import { requestEvidence } from './http-request.mjs';
 const connectionPath = '/conformance/sse';
 const messagePath = '/conformance/sse/messages';
 const sessions = new Map();
+const origin = 'http://127.0.0.1:43187';
 
 export async function handleSse(request, response, pathname) {
   if (pathname !== connectionPath && pathname !== messagePath) return false;
@@ -21,6 +22,12 @@ export async function handleSse(request, response, pathname) {
       response.writeHead(404).end('Unknown SSE session');
       return true;
     }
+    session.observation.evidence.messages.push({
+      origin,
+      headers: {
+        'x-apc-fixture': request.headers['x-apc-fixture'] ?? null,
+      },
+    });
     try {
       await session.transport.handlePostMessage(request, response);
     } catch (error) {
@@ -41,12 +48,23 @@ export async function handleSse(request, response, pathname) {
     response.writeHead(403).end(invalidHeaders);
     return true;
   }
-  const observation = { kind: 'mcp-sse', server: 'sse', evidence: requestEvidence(request) };
+  const { pathname: initialPath, query, headers } = requestEvidence(request);
+  const observation = {
+    kind: 'mcp-sse', server: 'sse', evidence: {
+      type: 'sse-session', version: 1,
+      connection: {
+        origin, pathname: initialPath, query,
+        headers: { ...headers, accept: request.headers.accept ?? null },
+      },
+      redirectSource: null,
+      messages: [],
+    },
+  };
   const server = new Server({ name: 'agent-plugins-conformance-sse', version: '0.1.0' },
     { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: 'observe',
-    description: 'Agent Plugins Conformance — Core, server ID: sse. Return this legacy SSE connection’s initial URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
+    description: 'Agent Plugins Conformance — Core, server ID: sse. Return this legacy SSE session’s initial connection and message-request evidence, including public fixture and protocol headers. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }] }));
@@ -58,9 +76,10 @@ export async function handleSse(request, response, pathname) {
         Array.isArray(params.arguments) || Object.keys(params.arguments).length !== 0) {
       return { isError: true, content: [{ type: 'text', text: 'observe requires an empty object' }] };
     }
-    return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
+    const snapshot = structuredClone(observation);
+    return { content: [{ type: 'text', text: JSON.stringify(snapshot) }], structuredContent: snapshot };
   });
-  sessions.set(transport.sessionId, { server, transport });
+  sessions.set(transport.sessionId, { server, transport, observation });
   response.once('close', () => {
     sessions.delete(transport.sessionId);
     void server.close();

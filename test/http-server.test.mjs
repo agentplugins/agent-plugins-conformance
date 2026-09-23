@@ -9,6 +9,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const origin = 'http://127.0.0.1:43187';
@@ -192,17 +193,29 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     )));
     assert.deepEqual(firstResult.structuredContent, {
       kind: 'mcp-sse', server: 'sse', evidence: {
-        type: 'request', version: 1, pathname: '/conformance/sse',
-        query: [['value', '$APC_SSE_VALUE']],
-        headers: { 'x-apc-fixture': literalHeader },
+        type: 'sse-session', version: 1,
+        connection: {
+          origin, pathname: '/conformance/sse', query: [['value', '$APC_SSE_VALUE']],
+          headers: { 'x-apc-fixture': literalHeader, accept: 'text/event-stream' },
+        },
+        redirectSource: null,
+        messages: Array.from({ length: 4 }, () => ({
+          origin, headers: { 'x-apc-fixture': literalHeader },
+        })),
       },
     });
     assert.deepEqual(JSON.parse(firstResult.content[0].text), firstResult.structuredContent);
     assert.equal(JSON.stringify(firstResult).includes('private sentinel'), false);
     assert.deepEqual(secondResult.structuredContent.evidence, {
-      type: 'request', version: 1, pathname: '/conformance/sse',
-      query: [['value', 'second session'], ['value', '&=']],
-      headers: { 'x-apc-fixture': 'independent session' },
+      type: 'sse-session', version: 1,
+      connection: {
+        origin, pathname: '/conformance/sse', query: [['value', 'second session'], ['value', '&=']],
+        headers: { 'x-apc-fixture': 'independent session', accept: 'text/event-stream' },
+      },
+      redirectSource: null,
+      messages: Array.from({ length: 4 }, () => ({
+        origin, headers: { 'x-apc-fixture': 'independent session' },
+      })),
     });
 
     const firstGet = first.requests.find(({ method }) => method === 'GET');
@@ -223,10 +236,32 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
       assert.notEqual(attempt, 99, 'Closed SSE session was not removed');
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    assert.deepEqual(
-      (await second.client.callTool({ name: 'observe', arguments: {} })).structuredContent,
-      secondResult.structuredContent,
-    );
+    const later = (await second.client.callTool({ name: 'observe', arguments: {} })).structuredContent;
+    assert.deepEqual(later.evidence.connection, secondResult.structuredContent.evidence.connection);
+    assert.deepEqual(later.evidence.messages.slice(0, -1), secondResult.structuredContent.evidence.messages);
+    assert.equal(later.evidence.messages.length, 5);
+  });
+
+  await t.test('legacy SSE retains an early incorrect POST header after later correct requests', async (t) => {
+    const literal = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
+    const client = new Client({ name: 'sse-header-fault-control', version: '1' });
+    t.after(() => client.close());
+    await client.connect(new SSEClientTransport(new URL(`${sseEndpoint}?value=$APC_SSE_VALUE`), {
+      requestInit: { headers: { 'x-apc-fixture': literal } },
+      fetch: async (input, init) => {
+        const headers = new Headers(init?.headers);
+        if (init?.method === 'POST' && JSON.parse(init.body).method === 'initialize') {
+          headers.set('x-apc-fixture', 'incorrect early value');
+        }
+        return fetch(input, { ...init, headers });
+      },
+    }));
+    const observation = (await client.callTool({ name: 'observe', arguments: {} })).structuredContent;
+    assert.equal(observation.evidence.messages[0].headers['x-apc-fixture'], 'incorrect early value');
+    assert.equal(observation.evidence.messages.at(-1).headers['x-apc-fixture'], literal);
+    const report = buildReport({ schemaVersion: 1, observations: [observation] });
+    assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.literal-value').status, 'pass');
+    assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.literal-post-value').status, 'fail');
   });
 
   await t.test('SDK connects despite a conflicting configured Accept header', async (t) => {
@@ -495,7 +530,7 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
 
   await t.test('stopping the process releases the listener', async () => {
     const openSse = await connectSse(t, '?value=open-during-shutdown');
-    assert.deepEqual((await openSse.client.callTool({ name: 'observe', arguments: {} })).structuredContent.evidence.query,
+    assert.deepEqual((await openSse.client.callTool({ name: 'observe', arguments: {} })).structuredContent.evidence.connection.query,
       [['value', 'open-during-shutdown']]);
     // Windows terminates the process directly rather than invoking its SIGTERM handler.
     assert.deepEqual(await server.stop(), process.platform === 'win32' ? [null, 'SIGTERM'] : [0, null]);
