@@ -225,7 +225,7 @@ try {
   }
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
   const sseObservations = [];
-  for (const server of ['sse', 'sse-header-precedence']) {
+  for (const server of ['sse', 'sse-header-precedence', 'sse-redirect']) {
     const entry = status.data.find(({ name }) => name === server);
     let observation;
     if (entry && Object.hasOwn(entry.tools, 'observe')) {
@@ -252,8 +252,13 @@ try {
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
+    if (result.id === 'mcp.sse.headers.cross-origin-redirect') {
+      const evidence = sseObservations.find(({ server }) => server === 'sse-redirect').evidence;
+      if (evidence?.type !== 'sse-session') assert.equal(result.status, 'not_verified');
+      continue;
+    }
     const successful = result.id === 'mcp.sse.headers.generated-precedence'
-      ? sseObservations.every(({ evidence }) => evidence?.type === 'sse-session')
+      ? sseObservations.slice(0, 2).every(({ evidence }) => evidence?.type === 'sse-session')
       : ['request', 'sse-session'].includes(baselineSse?.type) &&
         (result.id !== 'mcp.sse.headers.literal-post-value' || baselineSse.type === 'sse-session');
     assert.equal(result.status, successful ? 'pass' : 'not_verified', `${result.id}: unexpected optional SSE outcome`);

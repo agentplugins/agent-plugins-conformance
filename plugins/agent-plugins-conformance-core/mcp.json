@@ -76,6 +76,13 @@
       "headers": {
         "AcCePt": "application/x-apc-configured"
       }
+    },
+    "sse-redirect": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse-redirect",
+      "headers": {
+        "x-apc-fixture": "public SSE redirect fixture value"
+      }
     }
   }
 }

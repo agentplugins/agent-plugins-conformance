@@ -15,6 +15,9 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 const origin = 'http://127.0.0.1:43187';
 const endpoint = `${origin}/conformance/mcp`;
 const sseEndpoint = `${origin}/conformance/sse`;
+const sourceOrigin = origin;
+const destinationOrigin = 'http://127.0.0.1:43189';
+const redirectHeader = 'public SSE redirect fixture value';
 
 async function within(promise, milliseconds, message) {
   let timer;
@@ -97,6 +100,111 @@ async function connectSse(t, query = '', headers = {}) {
     },
   }));
   return { client, requests };
+}
+
+function eventReader(response) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const queue = [];
+  const waiters = [];
+  let buffer = '';
+  let failure;
+  function deliver(event) {
+    const waiter = waiters.shift();
+    if (waiter) waiter.resolve(event);
+    else queue.push(event);
+  }
+  void (async () => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done }).replaceAll('\r\n', '\n');
+        let separator;
+        while ((separator = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, separator);
+          buffer = buffer.slice(separator + 2);
+          let type = 'message';
+          const data = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event:')) type = line.slice(6).trimStart();
+            if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+          }
+          if (data.length) deliver({ type, data: data.join('\n') });
+        }
+        if (done) throw new Error('SSE stream ended');
+      }
+    } catch (error) {
+      failure = error;
+      for (const waiter of waiters.splice(0)) waiter.reject(error);
+    }
+  })();
+  return {
+    async next() {
+      if (queue.length) return queue.shift();
+      if (failure) throw failure;
+      return new Promise((resolve, reject) => waiters.push({ resolve, reject }));
+    },
+    close: () => reader.cancel(),
+  };
+}
+
+async function openStream(url, headers, redirect = 'follow') {
+  const response = await fetch(url, {
+    headers: { ...headers, accept: 'text/event-stream' },
+    redirect,
+  });
+  assert.equal(response.status, 200);
+  const events = eventReader(response);
+  const endpointEvent = await within(events.next(), 3_000, 'missing endpoint event');
+  assert.equal(endpointEvent.type, 'endpoint');
+  return { events, endpoint: new URL(endpointEvent.data), response };
+}
+
+async function runProtocol(t, stream, messageHeaders) {
+  let id = 0;
+  let messageIndex = 0;
+  async function post(message, expectResponse) {
+    const marker = messageHeaders[Math.min(messageIndex, messageHeaders.length - 1)];
+    messageIndex += 1;
+    const response = await fetch(stream.endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(marker === null ? {} : { 'x-apc-fixture': marker }),
+      },
+      body: JSON.stringify(message),
+    });
+    assert.equal(response.status, 202);
+    if (!expectResponse) return;
+    const event = await within(stream.events.next(), 3_000, `missing response to ${message.method}`);
+    assert.equal(event.type, 'message');
+    const result = JSON.parse(event.data);
+    assert.equal(result.id, message.id);
+    return result;
+  }
+  await post({
+    jsonrpc: '2.0', id: ++id, method: 'initialize',
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'reference', version: '1' } },
+  }, true);
+  await post({ jsonrpc: '2.0', method: 'notifications/initialized' }, false);
+  await post({ jsonrpc: '2.0', id: ++id, method: 'tools/list', params: {} }, true);
+  const call = await post({
+    jsonrpc: '2.0', id: ++id, method: 'tools/call',
+    params: { name: 'observe', arguments: {} },
+  }, true);
+  t.after(() => stream.events.close());
+  return call.result.structuredContent;
+}
+
+async function manualRedirectStream(destinationHeader) {
+  const source = await fetch(`${sourceOrigin}/conformance/sse-redirect?value=%24APC_SSE_REDIRECT_VALUE`, {
+    headers: { accept: 'text/event-stream', 'x-apc-fixture': redirectHeader },
+    redirect: 'manual',
+  });
+  assert.equal(source.status, 307);
+  const target = new URL(source.headers.get('location'));
+  assert.equal(target.origin, destinationOrigin);
+  return openStream(target, destinationHeader === null ? {} : { 'x-apc-fixture': destinationHeader });
 }
 
 test('standalone HTTP bundle serves independent MCP requests and stops cleanly', { timeout: 30_000 }, async (t) => {
@@ -290,6 +398,42 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
       assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.generated-precedence').status,
         faulty ? 'fail' : 'pass');
     }
+  });
+
+  await t.test('redirect controls distinguish stripped and forwarded initial GET headers', async (t) => {
+    const [stripped, forwarded] = await Promise.all([
+      manualRedirectStream(null).then((stream) => runProtocol(t, stream, [redirectHeader])),
+      manualRedirectStream(redirectHeader).then((stream) => runProtocol(t, stream, [redirectHeader])),
+    ]);
+    assert.equal(stripped.evidence.redirectSource.headers['x-apc-fixture'], redirectHeader);
+    assert.equal(stripped.evidence.connection.origin, destinationOrigin);
+    assert.equal(stripped.evidence.connection.headers['x-apc-fixture'], null);
+    assert.equal(forwarded.evidence.connection.headers['x-apc-fixture'], redirectHeader);
+    for (const [observation, expected] of [[stripped, 'pass'], [forwarded, 'fail']]) {
+      const report = buildReport({ schemaVersion: 1, observations: [observation] });
+      assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.cross-origin-redirect').status, expected);
+    }
+    for (const evidence of [stripped.evidence, forwarded.evidence]) {
+      assert.equal(evidence.redirectSource.origin, sourceOrigin);
+      assert.equal(evidence.messages.length, 4);
+      assert.ok(evidence.messages.every(({ origin }) => origin === sourceOrigin));
+    }
+  });
+
+  await t.test('SDK redirect behavior returns destination GET evidence through the original-origin endpoint', async (t) => {
+    const client = new Client({ name: 'sdk-get-redirect', version: '1' });
+    t.after(() => client.close());
+    await client.connect(new SSEClientTransport(
+      new URL(`${sourceOrigin}/conformance/sse-redirect?value=%24APC_SSE_REDIRECT_VALUE`),
+      { requestInit: { headers: { 'x-apc-fixture': redirectHeader } } },
+    ));
+    const result = await client.callTool({ name: 'observe', arguments: {} });
+    assert.equal(result.structuredContent.server, 'sse-redirect');
+    assert.equal(result.structuredContent.evidence.redirectSource.headers['x-apc-fixture'], redirectHeader);
+    assert.equal(result.structuredContent.evidence.connection.headers['x-apc-fixture'], redirectHeader);
+    const report = buildReport({ schemaVersion: 1, observations: [result.structuredContent] });
+    assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.cross-origin-redirect').status,
+      result.structuredContent.evidence.connection.headers['x-apc-fixture'] === null ? 'pass' : 'fail');
   });
 
   await t.test('SDK connects despite a conflicting configured Accept header', async (t) => {

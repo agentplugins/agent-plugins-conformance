@@ -194,7 +194,10 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
     assert.equal(result.status, 0, result.stderr);
     const report = await f.read();
     assert.deepEqual(report, expected([{ ...control, serverHealthCheck: 'passed' }, observation]));
-    assert.ok(report.results.filter(({ id }) => id.startsWith('mcp.sse.') && id !== 'mcp.sse.headers.generated-precedence')
+    assert.ok(report.results.filter(({ id }) => [
+      'mcp.sse.tool-availability', 'mcp.sse.url.literal-route-and-query',
+      'mcp.sse.headers.literal-value', 'mcp.sse.headers.literal-post-value',
+    ].includes(id))
       .every(({ id, status }) => status === (
         evidence?.type === 'sse-session' || evidence?.type === 'request' && id !== 'mcp.sse.headers.literal-post-value'
           ? 'pass' : 'not_verified')));

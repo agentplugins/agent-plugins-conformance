@@ -25,7 +25,7 @@ const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
 const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
-const SSE_SERVERS = ['sse', 'sse-header-precedence'];
+const SSE_SERVERS = ['sse', 'sse-header-precedence', 'sse-redirect'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -207,8 +207,12 @@ export function validateInput(input, { recording = false } = {}) {
       sse.set(observation.server, observation);
       if (observation.evidence !== null) {
         validateHttpEvidence(observation.evidence, `${at}.evidence`, ['request', 'error', 'sse-session']);
-        if (observation.evidence.type === 'error' && observation.evidence.classification !== null) {
-          invalid(`${at}.evidence.classification`, 'expected null');
+        if (observation.evidence.type === 'error') {
+          const classifications = observation.server === 'sse-redirect' ? [null, 'redirect-refused'] : [null];
+          if (!classifications.includes(observation.evidence.classification)) {
+            invalid(`${at}.evidence.classification`, observation.server === 'sse-redirect'
+              ? 'expected redirect-refused or null' : 'expected null');
+          }
         }
       }
     } else if (observation.kind === 'mcp-stdio') {
@@ -425,6 +429,35 @@ export function buildReport(input) {
           'The redirected destination received the configured header without destination authorization.');
       }
     }
+  }
+
+  const sseRedirectId = 'mcp.sse.headers.cross-origin-redirect';
+  const sseRedirectObservation = sse.get('sse-redirect');
+  const sseRedirectEvidence = sseRedirectObservation?.evidence;
+  if (sseRedirectEvidence?.type === 'error') {
+    set(sseRedirectId, sseRedirectEvidence.classification === 'redirect-refused' ? 'pass' : 'not_verified',
+      sseRedirectEvidence.classification === 'redirect-refused'
+        ? 'Agent reported an unambiguous native refusal to follow the cross-origin SSE redirect; the exact error is preserved in the observation.'
+        : 'The native SSE redirect attempt returned an error that does not establish redirect refusal; the exact error is preserved in the observation.');
+  } else if (sseRedirectEvidence?.type === 'sse-session') {
+    const source = sseRedirectEvidence.redirectSource;
+    const destination = sseRedirectEvidence.connection;
+    const pathname = '/conformance/sse-redirect';
+    const sourceOrigin = 'http://127.0.0.1:43187';
+    const destinationOrigin = 'http://127.0.0.1:43189';
+    const sourceHeader = 'public SSE redirect fixture value';
+    if (source === null || source.origin !== sourceOrigin || source.pathname !== pathname ||
+        source.headers['x-apc-fixture'] !== sourceHeader || destination.origin !== destinationOrigin ||
+        destination.pathname !== pathname) {
+      set(sseRedirectId, 'not_verified',
+        'The SSE session did not supply the expected source and destination redirect route evidence.');
+    } else {
+      check(sseRedirectId, destination.headers['x-apc-fixture'] === null,
+        'The redirected destination did not receive the configured source header.',
+        'The redirected destination received the configured source header without destination authorization.');
+    }
+  } else if (sseRedirectObservation) {
+    set(sseRedirectId, 'not_verified', 'The completed native SSE redirect attempt supplied no usable session evidence.');
   }
 
   const missingSkills = Object.keys(CORE_SKILLS).filter((skill) => !skills.has(skill));
