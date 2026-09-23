@@ -109,6 +109,10 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'streamable-http',
     url: 'http://fixture:fixture@127.0.0.1:43187/conformance/recovery-http-userinfo',
   });
+  assert.deepEqual(mcp.mcpServers['recovery-http-relative-url'], {
+    type: 'streamable-http',
+    url: '//127.0.0.1:43187/conformance/recovery-http-relative-url',
+  });
   assert.deepEqual(mcp.mcpServers['recovery-http-header-name'], {
     type: 'streamable-http',
     url: 'http://127.0.0.1:43187/conformance/recovery-http-header-name',
@@ -136,6 +140,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) =>
     ['/mcpServers/recovery-invalid', '/mcpServers/recovery-cwd-invalid-form', '/mcpServers/recovery-unknown-field',
+      '/mcpServers/recovery-http-relative-url',
       '/mcpServers/recovery-env-plugin-root', '/mcpServers/recovery-env-plugin-data']
       .some((prefix) => instancePath.startsWith(prefix))),
     JSON.stringify(validateMcp.errors));
@@ -166,6 +171,8 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   delete schemaValidMcp.mcpServers['recovery-env-plugin-root'].env.PLUGIN_ROOT;
   delete schemaValidMcp.mcpServers['recovery-env-plugin-data'].env.PLUGIN_DATA;
   schemaValidMcp.mcpServers['recovery-cwd-invalid-form'].cwd = './';
+  schemaValidMcp.mcpServers['recovery-http-relative-url'].url =
+    `http:${schemaValidMcp.mcpServers['recovery-http-relative-url'].url}`;
   assert.equal(validateMcp(schemaValidMcp), true, JSON.stringify(validateMcp.errors));
 });
 

@@ -223,6 +223,45 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(configuredUrl.password, 'fixture');
   });
 
+  await t.test('scheme-relative URL route has a valid control and a deliberately permissive failure witness', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const configured = mcp.mcpServers['recovery-http-relative-url'];
+    assert.deepEqual(configured, {
+      type: 'streamable-http',
+      url: '//127.0.0.1:43187/conformance/recovery-http-relative-url',
+    });
+
+    const correctedUrl = `http:${configured.url}`;
+    const observe = async (url) => {
+      const client = new Client({ name: 'relative-url-reference-test', version: '1' });
+      t.after(() => client.close());
+      await client.connect(new StreamableHTTPClientTransport(url));
+      assert.equal(client.getServerVersion().name, 'agent-plugins-conformance-recovery-http-relative-url');
+      assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      const expected = {
+        kind: 'mcp-streamable-http', server: 'recovery-http-relative-url', evidence: {
+          type: 'request', version: 1, pathname: '/conformance/recovery-http-relative-url',
+          query: [], headers: { 'x-apc-fixture': null },
+        },
+      };
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, expected);
+      assert.deepEqual(JSON.parse(result.content[0].text), expected);
+      return result.structuredContent;
+    };
+
+    const validControl = await observe(new URL(correctedUrl));
+
+    // Supplying a base models an incorrect loader accepting the unchanged
+    // scheme-relative URL before constructing the SDK transport.
+    const permissiveUrl = new URL(configured.url, 'http://fixture.invalid/');
+    assert.equal(permissiveUrl.href, correctedUrl);
+    const permissiveObservation = await observe(permissiveUrl);
+    assert.deepEqual(permissiveObservation, validControl);
+    assert.equal(configured.url, '//127.0.0.1:43187/conformance/recovery-http-relative-url');
+  });
+
   await t.test('invalid header routes have valid controls and deliberately permissive failure witnesses', async (t) => {
     const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
     const cases = [
