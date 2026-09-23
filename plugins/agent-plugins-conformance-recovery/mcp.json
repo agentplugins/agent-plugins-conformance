@@ -81,6 +81,33 @@
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-duplicate-headers",
       "headers": { "X-Apc-Duplicate": "first", "x-apc-duplicate": "second" }
+    },
+    "recovery-sse-relative-url": {
+      "type": "sse",
+      "url": "//127.0.0.1:43187/conformance/recovery-sse-relative-url"
+    },
+    "recovery-sse-fragment": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/recovery-sse-fragment#invalid-fragment"
+    },
+    "recovery-sse-userinfo": {
+      "type": "sse",
+      "url": "http://fixture:fixture@127.0.0.1:43187/conformance/recovery-sse-userinfo"
+    },
+    "recovery-sse-duplicate-headers": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/recovery-sse-duplicate-headers",
+      "headers": { "X-Apc-Duplicate": "first", "x-apc-duplicate": "second" }
+    },
+    "recovery-sse-header-name": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/recovery-sse-header-name",
+      "headers": { "X Apc Fixture": "fixture" }
+    },
+    "recovery-sse-header-value": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/recovery-sse-header-value",
+      "headers": { "x-apc-fixture": "first\r\nsecond" }
     }
   }
 }

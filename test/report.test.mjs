@@ -58,11 +58,19 @@ const invalidHttpServerCases = [
   ['recovery-http-header-name', 'mcp.streamable-http.headers.invalid-name'],
   ['recovery-http-header-value', 'mcp.streamable-http.headers.invalid-value'],
 ];
+const invalidSseServerCases = [
+  ['recovery-sse-relative-url', 'mcp.sse.url.relative'],
+  ['recovery-sse-fragment', 'mcp.sse.url.fragment'],
+  ['recovery-sse-userinfo', 'mcp.sse.url.userinfo'],
+  ['recovery-sse-duplicate-headers', 'mcp.sse.headers.duplicate-names'],
+  ['recovery-sse-header-name', 'mcp.sse.headers.invalid-name'],
+  ['recovery-sse-header-value', 'mcp.sse.headers.invalid-value'],
+];
 
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 25, total: 41 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 35, total: 51 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -75,19 +83,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 25, total: 41 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 35, total: 51 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 39, total: 41 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 49, total: 51 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 22, total: 41 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 32, total: 51 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -110,7 +118,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 41, total: 41 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 51, total: 51 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -121,7 +129,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 39, total: 41 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 49, total: 51 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -136,11 +144,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 41, total: 41 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 51, total: 51 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 34);
+  assert.equal(mcp.length, 44);
   assert.equal(report.results.filter(({ id }) => id.startsWith('filesystem.')).length, 4);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
@@ -556,7 +564,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 21, total: 41 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 31, total: 51 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));
@@ -667,16 +675,40 @@ const sseObservation = () => ({
     headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
   },
 });
+const SSE_ORIGIN = 'http://127.0.0.1:43187';
+const SSE_LITERAL_HEADER = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
+const sseConnection = () => ({
+  origin: SSE_ORIGIN,
+  pathname: '/conformance/sse',
+  query: [['value', '$APC_SSE_VALUE']],
+  headers: { 'x-apc-fixture': SSE_LITERAL_HEADER, accept: 'text/event-stream' },
+});
+const sseSessionObservation = () => ({
+  kind: 'mcp-sse', server: 'sse', evidence: {
+    type: 'sse-session', version: 1,
+    connection: sseConnection(),
+    redirectSource: null,
+    messages: [
+      { origin: SSE_ORIGIN, headers: { 'x-apc-fixture': SSE_LITERAL_HEADER } },
+      { origin: SSE_ORIGIN, headers: { 'x-apc-fixture': SSE_LITERAL_HEADER } },
+    ],
+  },
+});
+const invalidSseRuntime = (server, evidence = {
+  type: 'request', version: 1, pathname: `/conformance/${server}`, query: [],
+  headers: { 'x-apc-fixture': null },
+}) => ({ kind: 'mcp-sse', server, evidence });
 const sseResults = (report) => report.results.filter(({ id }) => [
   'mcp.sse.tool-availability',
   'mcp.sse.url.literal-route-and-query',
   'mcp.sse.headers.literal-value',
+  'mcp.sse.headers.literal-post-value',
 ].includes(id));
 
 test('native SSE request evidence passes availability and evaluates URL and initial header independently', () => {
   const observation = sseObservation();
   const report = buildReport({ schemaVersion: 1, observations: [observation] });
-  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass']);
+  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass', 'not_verified']);
   assert.deepEqual(report.observations, [observation]);
   assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
 
@@ -685,7 +717,7 @@ test('native SSE request evidence passes availability and evaluates URL and init
   observation.evidence.headers['x-apc-fixture'] = 'expanded';
   assert.equal(report.observations[0].evidence.pathname, '/conformance/sse');
   assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
-    ['pass', 'fail', 'fail']);
+    ['pass', 'fail', 'fail', 'not_verified']);
 });
 
 test('SSE URL evidence preserves the literal route and one ordered decoded query pair', () => {
@@ -699,17 +731,17 @@ test('SSE URL evidence preserves the literal route and one ordered decoded query
     const observation = sseObservation();
     Object.assign(observation.evidence, { pathname, query });
     assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
-      ['pass', 'fail', 'pass']);
+      ['pass', 'fail', 'pass', 'not_verified']);
   }
 });
 
 test('SSE path, query, and initial header mismatches fail only their specific literal checks', () => {
   for (const [modify, statuses] of [
-    [(evidence) => { evidence.pathname = '/other/sse'; }, ['pass', 'fail', 'pass']],
-    [(evidence) => { evidence.query = [['value', 'expanded']]; }, ['pass', 'fail', 'pass']],
-    [(evidence) => { evidence.headers['x-apc-fixture'] = 'expanded'; }, ['pass', 'pass', 'fail']],
+    [(evidence) => { evidence.connection.pathname = '/other/sse'; }, ['pass', 'fail', 'pass', 'pass']],
+    [(evidence) => { evidence.connection.query = [['value', 'expanded']]; }, ['pass', 'fail', 'pass', 'pass']],
+    [(evidence) => { evidence.connection.headers['x-apc-fixture'] = 'expanded'; }, ['pass', 'pass', 'fail', 'pass']],
   ]) {
-    const observation = sseObservation();
+    const observation = sseSessionObservation();
     modify(observation.evidence);
     assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [observation] })).map(({ status }) => status),
       statuses);
@@ -718,17 +750,314 @@ test('SSE path, query, and initial header mismatches fail only their specific li
 
 test('missing, null, and error SSE evidence remain unverified and preserve exact diagnostics', () => {
   assert.deepEqual(sseResults(buildReport({ schemaVersion: 1, observations: [] })).map(({ status }) => status),
-    ['not_verified', 'not_verified', 'not_verified']);
+    ['not_verified', 'not_verified', 'not_verified', 'not_verified']);
   for (const evidence of [null, { type: 'error', message: 'native SSE failure\nwith detail', classification: null }]) {
     const observation = { kind: 'mcp-sse', server: 'sse', evidence };
     const report = buildReport({ schemaVersion: 1, observations: [observation] });
-    assert.deepEqual(sseResults(report).map(({ status }) => status), ['not_verified', 'not_verified', 'not_verified']);
+    assert.deepEqual(sseResults(report).map(({ status }) => status),
+      ['not_verified', 'not_verified', 'not_verified', 'not_verified']);
     assert.deepEqual(report.observations, [observation]);
     assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
     const detail = sseResults(report)[0].detail;
     if (evidence === null) assert.match(detail, /no usable evidence/);
     else assert.match(detail, /exact diagnostic is preserved in the observation/);
   }
+});
+
+test('SSE session evidence evaluates the initial connection and every POST, then round trips canonically', () => {
+  const observation = sseSessionObservation();
+  observation.evidence.redirectSource = {
+    origin: 'http://127.0.0.1:43188',
+    pathname: '/conformance/sse-redirect',
+    query: [['source', 'redirect']],
+    headers: { 'x-apc-fixture': null, accept: 'text/event-stream' },
+  };
+  const report = buildReport({ schemaVersion: 1, observations: [observation] });
+  assert.deepEqual(sseResults(report).map(({ status }) => status), ['pass', 'pass', 'pass', 'pass']);
+  assert.deepEqual(report.observations, [observation]);
+  assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+
+  observation.evidence.connection.query[0][1] = 'changed-after-report';
+  observation.evidence.redirectSource.headers.accept = 'changed-after-report';
+  observation.evidence.messages[0].headers['x-apc-fixture'] = 'changed-after-report';
+  assert.equal(report.observations[0].evidence.connection.query[0][1], '$APC_SSE_VALUE');
+  assert.equal(report.observations[0].evidence.redirectSource.headers.accept, 'text/event-stream');
+  assert.equal(report.observations[0].evidence.messages[0].headers['x-apc-fixture'], SSE_LITERAL_HEADER);
+});
+
+test('SSE literal POST evidence requires same-origin messages and retains an earlier wrong header', () => {
+  const empty = sseSessionObservation();
+  empty.evidence.messages = [];
+  assert.equal(sseResults(buildReport({ schemaVersion: 1, observations: [empty] }))[3].status, 'not_verified');
+
+  const unexpectedOrigin = sseSessionObservation();
+  unexpectedOrigin.evidence.messages[0].origin = 'http://127.0.0.1:43188';
+  assert.equal(sseResults(buildReport({ schemaVersion: 1, observations: [unexpectedOrigin] }))[3].status, 'not_verified');
+
+  const wrongThenCorrect = sseSessionObservation();
+  wrongThenCorrect.evidence.messages[0].headers['x-apc-fixture'] = 'expanded';
+  const result = sseResults(buildReport({ schemaVersion: 1, observations: [wrongThenCorrect] }))[3];
+  assert.equal(result.status, 'fail');
+  assert.match(result.detail, /POST message 0/);
+  assert.match(result.detail, /expected .*; observed "expanded"/);
+});
+
+const precedenceResult = (report) => result(report, 'mcp.sse.headers.generated-precedence');
+const precedenceObservation = (accept = 'text/event-stream') => {
+  const observation = sseSessionObservation();
+  observation.server = 'sse-header-precedence';
+  observation.evidence.connection.headers.accept = accept;
+  return observation;
+};
+
+test('SSE generated Accept precedence passes only when the conflict preserves the exact baseline', () => {
+  const baseline = sseSessionObservation();
+  baseline.evidence.connection.headers.accept = 'text/event-stream, application/json;q=0.1';
+  const conflict = precedenceObservation(baseline.evidence.connection.headers.accept);
+  const report = buildReport({ schemaVersion: 1, observations: [conflict, baseline] });
+  assert.equal(precedenceResult(report).status, 'pass');
+  assert.deepEqual(report.observations.filter(({ kind }) => kind === 'mcp-sse'), [baseline, conflict]);
+  assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+});
+
+test('SSE configured Accept sentinel fails with case-insensitive media-type parsing', () => {
+  for (const accept of [
+    'application/x-apc-configured',
+    'Application/X-APC-Configured; q=0.5',
+    'text/event-stream, APPLICATION/X-APC-CONFIGURED ; charset=utf-8',
+  ]) {
+    const report = buildReport({
+      schemaVersion: 1,
+      observations: [sseSessionObservation(), precedenceObservation(accept)],
+    });
+    assert.equal(precedenceResult(report).status, 'fail', accept);
+  }
+});
+
+test('SSE generated Accept precedence leaves missing or ambiguous comparisons unverified', () => {
+  const baseline = sseSessionObservation();
+  const conflict = precedenceObservation();
+  const oldRequest = sseObservation();
+  const cases = [
+    [],
+    [baseline],
+    [conflict],
+    [oldRequest, conflict],
+    [baseline, { ...oldRequest, server: 'sse-header-precedence' }],
+    [{ ...baseline, evidence: { ...baseline.evidence, connection: { ...baseline.evidence.connection, origin: 'http://127.0.0.1:43188' } } }, conflict],
+    [baseline, { ...conflict, evidence: { ...conflict.evidence, connection: { ...conflict.evidence.connection, origin: 'http://127.0.0.1:43188' } } }],
+  ];
+  for (const observations of cases) {
+    assert.equal(precedenceResult(buildReport({ schemaVersion: 1, observations })).status, 'not_verified');
+  }
+
+  for (const [baselineAccept, conflictAccept] of [
+    [null, 'text/event-stream'],
+    ['application/x-apc-configured', 'application/x-apc-configured'],
+    ['Application/X-APC-Configured; q=0', 'text/event-stream'],
+    ['text/event-stream', null],
+    ['text/event-stream', 'text/event-stream '],
+    ['text/event-stream', 'application/x-apc-configured-other'],
+  ]) {
+    const generated = sseSessionObservation();
+    generated.evidence.connection.headers.accept = baselineAccept;
+    const configured = precedenceObservation(conflictAccept);
+    assert.equal(precedenceResult(buildReport({
+      schemaVersion: 1, observations: [generated, configured],
+    })).status, 'not_verified', JSON.stringify({ baselineAccept, conflictAccept }));
+  }
+});
+
+const redirectResult = (report) => result(report, 'mcp.sse.headers.cross-origin-redirect');
+const sseRedirectObservation = (destinationHeader = null) => {
+  const observation = sseSessionObservation();
+  observation.server = 'sse-redirect';
+  observation.evidence.connection = {
+    origin: 'http://127.0.0.1:43189',
+    pathname: '/conformance/sse-redirect',
+    query: [['correlation', 'destination-id']],
+    headers: { 'x-apc-fixture': destinationHeader, accept: 'text/event-stream' },
+  };
+  observation.evidence.redirectSource = {
+    origin: SSE_ORIGIN,
+    pathname: '/conformance/sse-redirect',
+    query: [['correlation', 'source-id']],
+    headers: { 'x-apc-fixture': 'public SSE redirect fixture value', accept: 'text/event-stream' },
+  };
+  return observation;
+};
+
+test('SSE cross-origin redirect passes only when the destination GET omits the configured header', () => {
+  const observation = sseRedirectObservation();
+  observation.evidence.messages[0].headers['x-apc-fixture'] = 'irrelevant POST header';
+  const report = buildReport({ schemaVersion: 1, observations: [observation] });
+  assert.equal(redirectResult(report).status, 'pass');
+  assert.deepEqual(report.observations, [observation]);
+  assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+
+  for (const destinationHeader of ['public SSE redirect fixture value', SSE_LITERAL_HEADER, 'other']) {
+    assert.equal(redirectResult(buildReport({
+      schemaVersion: 1, observations: [sseRedirectObservation(destinationHeader)],
+    })).status, 'fail');
+  }
+});
+
+test('SSE cross-origin redirect requires the expected source and destination route witnesses', () => {
+  const changes = [
+    (evidence) => { evidence.redirectSource = null; },
+    (evidence) => { evidence.redirectSource.origin = 'http://127.0.0.1:43188'; },
+    (evidence) => { evidence.redirectSource.pathname = '/other'; },
+    (evidence) => { evidence.redirectSource.headers['x-apc-fixture'] = null; },
+    (evidence) => { evidence.redirectSource.headers['x-apc-fixture'] = 'wrong'; },
+    (evidence) => { evidence.connection.origin = SSE_ORIGIN; },
+    (evidence) => { evidence.connection.pathname = '/other'; },
+  ];
+  for (const change of changes) {
+    const observation = sseRedirectObservation();
+    change(observation.evidence);
+    assert.equal(redirectResult(buildReport({ schemaVersion: 1, observations: [observation] })).status,
+      'not_verified');
+  }
+});
+
+test('SSE cross-origin redirect accepts only a scoped redirect-refused classification', () => {
+  for (const evidence of [
+    null,
+    sseObservation().evidence,
+    { type: 'error', message: 'native redirect failed', classification: null },
+  ]) {
+    const observation = { kind: 'mcp-sse', server: 'sse-redirect', evidence };
+    assert.equal(redirectResult(buildReport({ schemaVersion: 1, observations: [observation] })).status,
+      'not_verified');
+  }
+  const refused = {
+    kind: 'mcp-sse', server: 'sse-redirect',
+    evidence: { type: 'error', message: 'client refused cross-origin redirect', classification: 'redirect-refused' },
+  };
+  const report = buildReport({ schemaVersion: 1, observations: [refused] });
+  assert.equal(redirectResult(report).status, 'pass');
+  assert.deepEqual(report.observations, [refused]);
+
+  for (const server of ['sse', 'sse-header-precedence']) {
+    assert.throws(() => buildReport({
+      schemaVersion: 1, observations: [{ ...refused, server }],
+    }), /classification: expected null/);
+  }
+});
+
+const endpointResult = (report) => result(report, 'mcp.sse.headers.cross-origin-endpoint');
+const sseEndpointObservation = () => {
+  const observation = sseSessionObservation();
+  observation.server = 'sse-endpoint-origin';
+  observation.evidence.connection = {
+    origin: SSE_ORIGIN,
+    pathname: '/conformance/sse-endpoint-origin',
+    query: [['value', '$APC_SSE_ENDPOINT_VALUE']],
+    headers: { 'x-apc-fixture': 'public SSE endpoint fixture value', accept: 'text/event-stream' },
+  };
+  observation.evidence.redirectSource = null;
+  observation.evidence.messages = [
+    { origin: 'http://127.0.0.1:43189', headers: { 'x-apc-fixture': null } },
+    { origin: 'http://127.0.0.1:43189', headers: { 'x-apc-fixture': null } },
+  ];
+  return observation;
+};
+
+test('SSE cross-origin endpoint passes only when every known endpoint message omits the configured header', () => {
+  const observation = sseEndpointObservation();
+  const report = buildReport({ schemaVersion: 1, observations: [observation] });
+  assert.equal(endpointResult(report).status, 'pass');
+  assert.deepEqual(report.observations, [observation]);
+  assert.deepEqual(buildReport({ schemaVersion: report.schemaVersion, observations: report.observations }), report);
+
+  const earlyLeak = sseEndpointObservation();
+  earlyLeak.evidence.messages[0].headers['x-apc-fixture'] = 'public SSE endpoint fixture value';
+  assert.equal(endpointResult(buildReport({ schemaVersion: 1, observations: [earlyLeak] })).status, 'fail');
+
+  const leakAndUnknown = sseEndpointObservation();
+  leakAndUnknown.evidence.messages[0].headers['x-apc-fixture'] = 'public SSE endpoint fixture value';
+  leakAndUnknown.evidence.messages[1].origin = 'http://127.0.0.1:43190';
+  assert.equal(endpointResult(buildReport({ schemaVersion: 1, observations: [leakAndUnknown] })).status, 'fail');
+});
+
+test('SSE cross-origin endpoint requires a direct connection witness and known endpoint origins', () => {
+  const changes = [
+    (evidence) => { evidence.redirectSource = sseConnection(); },
+    (evidence) => { evidence.connection.origin = 'http://127.0.0.1:43188'; },
+    (evidence) => { evidence.connection.pathname = '/other'; },
+    (evidence) => { evidence.connection.headers['x-apc-fixture'] = null; },
+    (evidence) => { evidence.connection.headers['x-apc-fixture'] = 'wrong'; },
+    (evidence) => { evidence.messages = []; },
+    (evidence) => { evidence.messages[0].origin = 'http://127.0.0.1:43190'; },
+  ];
+  for (const change of changes) {
+    const observation = sseEndpointObservation();
+    change(observation.evidence);
+    assert.equal(endpointResult(buildReport({ schemaVersion: 1, observations: [observation] })).status,
+      'not_verified');
+  }
+});
+
+test('SSE cross-origin endpoint accepts only a scoped endpoint-refused classification', () => {
+  for (const evidence of [
+    null,
+    sseObservation().evidence,
+    { type: 'error', message: 'native endpoint failed', classification: null },
+  ]) {
+    const observation = { kind: 'mcp-sse', server: 'sse-endpoint-origin', evidence };
+    assert.equal(endpointResult(buildReport({ schemaVersion: 1, observations: [observation] })).status,
+      'not_verified');
+  }
+  const refused = {
+    kind: 'mcp-sse', server: 'sse-endpoint-origin',
+    evidence: { type: 'error', message: 'client refused cross-origin endpoint', classification: 'endpoint-refused' },
+  };
+  const report = buildReport({ schemaVersion: 1, observations: [refused] });
+  assert.equal(endpointResult(report).status, 'pass');
+  assert.deepEqual(report.observations, [refused]);
+
+  for (const [server, classification, pattern] of [
+    ['sse', 'endpoint-refused', /classification: expected null/],
+    ['sse-header-precedence', 'endpoint-refused', /classification: expected null/],
+    ['sse-redirect', 'endpoint-refused', /classification: expected redirect-refused or null/],
+    ['sse-endpoint-origin', 'redirect-refused', /classification: expected endpoint-refused or null/],
+  ]) {
+    assert.throws(() => buildReport({
+      schemaVersion: 1,
+      observations: [{ ...refused, server, evidence: { ...refused.evidence, classification } }],
+    }), pattern);
+  }
+  const http = httpObservation();
+  http.evidence = { type: 'error', message: 'endpoint refused', classification: 'endpoint-refused' };
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [http] }), /classification/);
+});
+
+test('SSE session evidence rejects malformed nested fields and is not accepted for Streamable HTTP', () => {
+  const malformed = [
+    (evidence) => { evidence.extra = true; },
+    (evidence) => { evidence.version = 2; },
+    (evidence) => { delete evidence.connection; },
+    (evidence) => { evidence.connection.extra = true; },
+    (evidence) => { evidence.connection.origin = null; },
+    (evidence) => { evidence.connection.query = [['value']]; },
+    (evidence) => { delete evidence.connection.headers.accept; },
+    (evidence) => { evidence.connection.headers.accept = false; },
+    (evidence) => { evidence.redirectSource = {}; },
+    (evidence) => { evidence.messages = {}; },
+    (evidence) => { delete evidence.messages[0].origin; },
+    (evidence) => { evidence.messages[0].origin = null; },
+    (evidence) => { evidence.messages[0].headers.extra = true; },
+    (evidence) => { delete evidence.messages[0].headers['x-apc-fixture']; },
+    (evidence) => { evidence.messages[0].headers['x-apc-fixture'] = false; },
+  ];
+  for (const modify of malformed) {
+    const observation = sseSessionObservation();
+    modify(observation.evidence);
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [observation] }), TypeError);
+  }
+  const http = httpObservation();
+  http.evidence = sseSessionObservation().evidence;
+  assert.throws(() => buildReport({ schemaVersion: 1, observations: [http] }), /expected one of: request, error/);
 });
 
 test('SSE observations reject malformed schemas, noncanonical identities, health fields, and duplicates', () => {
@@ -834,5 +1163,79 @@ test('invalid HTTP discovery and runtime schemas are strict and independently un
   assert.doesNotThrow(() => buildReport({
     schemaVersion: 1,
     observations: invalidHttpServerCases.map(([server]) => invalidHttpRuntime(server)),
+  }));
+});
+
+test('invalid SSE servers require exclusion discovery and successful stdio and SSE controls', () => {
+  const recoveryRuntime = recoveryObservations()[1];
+  for (const [server, id] of invalidSseServerCases) {
+    const absent = invalidServerDiscovery(server, false);
+    const advertised = invalidServerDiscovery(server, true);
+    for (const [observations, status] of [
+      [[], 'not_verified'],
+      [[absent], 'not_verified'],
+      [[recoveryRuntime, sseObservation()], 'not_verified'],
+      [[absent, recoveryRuntime], 'not_verified'],
+      [[absent, sseObservation()], 'not_verified'],
+      [[absent, recoveryRuntime, { kind: 'mcp-sse', server: 'sse', evidence: null }], 'not_verified'],
+      [[absent, recoveryRuntime, { kind: 'mcp-sse', server: 'sse', evidence: {
+        type: 'error', message: 'unsupported transport', classification: null,
+      } }], 'not_verified'],
+      [[absent, recoveryRuntime, sseObservation()], 'pass'],
+      [[absent, recoveryRuntime, sseSessionObservation()], 'pass'],
+      [[advertised], 'fail'],
+      [[advertised, recoveryRuntime, sseObservation()], 'fail'],
+      [[invalidSseRuntime(server)], 'fail'],
+      [[{ ...sseSessionObservation(), server }], 'fail'],
+      [[absent, invalidSseRuntime(server)], 'fail'],
+      [[absent, recoveryRuntime, sseObservation(), invalidSseRuntime(server)], 'fail'],
+      [[absent, recoveryRuntime, sseSessionObservation(), { ...sseSessionObservation(), server }], 'fail'],
+      [[absent, recoveryRuntime, sseObservation(), {
+        kind: 'mcp-sse', server, evidence: { type: 'error', message: 'native error', classification: null },
+      }], 'not_verified'],
+      [[advertised, recoveryRuntime, sseObservation(), { kind: 'mcp-sse', server, evidence: null }], 'fail'],
+    ]) {
+      const report = buildReport({ schemaVersion: 1, observations });
+      assert.equal(result(report, id).status, status, `${server}: ${JSON.stringify(observations)}`);
+    }
+  }
+});
+
+test('invalid SSE server evidence is evaluated independently across server identities', () => {
+  const controls = [recoveryObservations()[1], sseObservation()];
+  const discoveries = invalidSseServerCases.map(([server]) => invalidServerDiscovery(server, false));
+  const baseline = buildReport({ schemaVersion: 1, observations: [...discoveries, ...controls] });
+  for (const [, id] of invalidSseServerCases) assert.equal(result(baseline, id).status, 'pass');
+
+  for (const [failedServer, failedId] of invalidSseServerCases) {
+    const report = buildReport({
+      schemaVersion: 1,
+      observations: [...discoveries, ...controls, invalidSseRuntime(failedServer)],
+    });
+    assert.equal(result(report, failedId).status, 'fail');
+    for (const [server, id] of invalidSseServerCases) {
+      if (server !== failedServer) assert.equal(result(report, id).status, 'pass');
+    }
+    assert.deepEqual(buildReport({ schemaVersion: 1, observations: report.observations }), report);
+  }
+});
+
+test('invalid SSE discovery and runtime schemas are strict and independently unique', () => {
+  for (const [server] of invalidSseServerCases) {
+    const discovery = invalidServerDiscovery(server, false);
+    assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: [discovery] }));
+    assert.throws(() => buildReport({
+      schemaVersion: 1, observations: [discovery, invalidServerDiscovery(server, true)],
+    }), /duplicate/);
+
+    const valid = invalidSseRuntime(server);
+    const malformed = structuredClone(valid);
+    malformed.evidence.version = 2;
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [malformed] }), TypeError);
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [valid, structuredClone(valid)] }), /duplicate/);
+  }
+  assert.doesNotThrow(() => buildReport({
+    schemaVersion: 1,
+    observations: invalidSseServerCases.map(([server]) => invalidSseRuntime(server)),
   }));
 });

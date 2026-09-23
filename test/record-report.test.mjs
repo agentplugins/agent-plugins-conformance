@@ -55,6 +55,14 @@ const invalidHttpServerCases = [
   ['recovery-http-header-name', 'mcp.streamable-http.headers.invalid-name'],
   ['recovery-http-header-value', 'mcp.streamable-http.headers.invalid-value'],
 ];
+const invalidSseServerCases = [
+  ['recovery-sse-relative-url', 'mcp.sse.url.relative'],
+  ['recovery-sse-fragment', 'mcp.sse.url.fragment'],
+  ['recovery-sse-userinfo', 'mcp.sse.url.userinfo'],
+  ['recovery-sse-duplicate-headers', 'mcp.sse.headers.duplicate-names'],
+  ['recovery-sse-header-name', 'mcp.sse.headers.invalid-name'],
+  ['recovery-sse-header-value', 'mcp.sse.headers.invalid-value'],
+];
 const expected = (observations) => buildReport({ schemaVersion: 1, observations });
 const http = () => ({
   kind: 'mcp-streamable-http', server: 'http', evidence: {
@@ -67,6 +75,10 @@ const invalidHttp = (server, evidence = {
   type: 'request', version: 1, pathname: `/conformance/${server}`, query: [],
   headers: { 'x-apc-fixture': null },
 }) => ({ kind: 'mcp-streamable-http', server, evidence });
+const invalidSse = (server, evidence = {
+  type: 'request', version: 1, pathname: `/conformance/${server}`, query: [],
+  headers: { 'x-apc-fixture': null },
+}) => ({ kind: 'mcp-sse', server, evidence });
 const redirectError = (classification, message = 'native error\n  with exact whitespace  ') => ({
   kind: 'mcp-streamable-http', server: 'http-redirect',
   evidence: { type: 'error', message, classification },
@@ -176,8 +188,17 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
   assert.equal(health.run({ action: 'record', observation: control }).status, 0);
   const diagnostic = 'Agent Plugins legacy SSE transport is not supported\n  exact detail\t';
   const runtime = { ...http().evidence, pathname: '/conformance/sse', query: [['value', '$APC_SSE_VALUE']] };
+  const session = {
+    type: 'sse-session', version: 1,
+    connection: {
+      origin: 'http://127.0.0.1:43187', pathname: runtime.pathname, query: runtime.query,
+      headers: { ...runtime.headers, accept: 'text/event-stream' },
+    },
+    redirectSource: null,
+    messages: [{ origin: 'http://127.0.0.1:43187', headers: { ...runtime.headers } }],
+  };
   for (const evidence of [
-    { type: 'error', message: diagnostic, classification: null }, runtime, null,
+    { type: 'error', message: diagnostic, classification: null }, runtime, session, null,
     { type: 'error', message: diagnostic, classification: null },
   ]) {
     const observation = { kind: 'mcp-sse', server: 'sse', evidence };
@@ -185,8 +206,13 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
     assert.equal(result.status, 0, result.stderr);
     const report = await f.read();
     assert.deepEqual(report, expected([{ ...control, serverHealthCheck: 'passed' }, observation]));
-    assert.ok(report.results.filter(({ id }) => id.startsWith('mcp.sse.'))
-      .every(({ status }) => status === (evidence?.type === 'request' ? 'pass' : 'not_verified')));
+    assert.ok(report.results.filter(({ id }) => [
+      'mcp.sse.tool-availability', 'mcp.sse.url.literal-route-and-query',
+      'mcp.sse.headers.literal-value', 'mcp.sse.headers.literal-post-value',
+    ].includes(id))
+      .every(({ id, status }) => status === (
+        evidence?.type === 'sse-session' || evidence?.type === 'request' && id !== 'mcp.sse.headers.literal-post-value'
+          ? 'pass' : 'not_verified')));
     assert.equal(await health.calls(), 1);
   }
   const summary = spawnSync(process.execPath, [fileURLToPath(new URL(
@@ -201,6 +227,37 @@ test('SSE records preserve diagnostics and replace runtime evidence without HTTP
   assert.equal(rejected.status, 2);
   assert.equal(await readFile(f.outputPath, 'utf8'), before);
   assert.equal(await health.calls(), 1);
+});
+
+test('invalid SSE discovery and runtime records replace independently without HTTP health requests', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  f.success(start);
+  f.record(recoveryMcp());
+  f.record({ kind: 'mcp-sse', server: 'sse', evidence: {
+    type: 'request', version: 1, pathname: '/conformance/sse', query: [['value', '$APC_SSE_VALUE']],
+    headers: { 'x-apc-fixture': '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces' },
+  } });
+  for (const [server] of invalidSseServerCases) f.record(invalidServerDiscovery(server, false));
+  let report = await f.read();
+  for (const [, id] of invalidSseServerCases) {
+    assert.equal(report.results.find((item) => item.id === id).status, 'pass');
+  }
+
+  const [failedServer, failedId] = invalidSseServerCases[0];
+  f.record(invalidSse(failedServer));
+  report = await f.read();
+  assert.equal(report.results.find((item) => item.id === failedId).status, 'fail');
+  assert.deepEqual(report.observations.find(({ kind, server }) =>
+    kind === 'mcp-sse' && server === failedServer), invalidSse(failedServer));
+
+  const exact = 'native SSE refusal\n\n  scoped detail\t';
+  f.record(invalidSse(failedServer, { type: 'error', message: exact, classification: null }));
+  report = await f.read();
+  assert.equal(report.results.find((item) => item.id === failedId).status, 'not_verified');
+  assert.equal(report.observations.find(({ kind, server }) =>
+    kind === 'mcp-sse' && server === failedServer).evidence.message, exact);
+  assert.equal(await health.calls(), 0);
 });
 
 test('redirect records receive fresh health and replace independently with exact error text', async (t) => {

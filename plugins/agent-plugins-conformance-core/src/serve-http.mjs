@@ -22,7 +22,7 @@ const recoveryRoutes = new Map([
 const listener = createServer(async (request, response) => {
   const separator = request.url.indexOf('?');
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
-  if (await handleSse(request, response, requestPathname)) return;
+  if (await handleSse(request, response, requestPathname, `http://${host}:${port}`)) return;
   if (requestPathname === '/conformance/redirect') {
     await handleRedirect(request, response, 'source');
     return;
@@ -81,7 +81,12 @@ const listener = createServer(async (request, response) => {
   }
 });
 
-const redirectDestination = createServer((request, response) => handleRedirect(request, response, 'destination'));
+const redirectDestination = createServer(async (request, response) => {
+  const separator = request.url.indexOf('?');
+  const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
+  if (await handleSse(request, response, requestPathname, `http://${host}:43189`)) return;
+  await handleRedirect(request, response, 'destination');
+});
 const listeners = [
   { server: listener, port, url },
   { server: redirectDestination, port: 43189, url: `http://${host}:43189/conformance/redirect` },

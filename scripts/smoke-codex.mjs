@@ -17,6 +17,10 @@ assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
 const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
+const invalidSseServers = [
+  'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
+  'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
+];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
   id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
@@ -200,7 +204,7 @@ try {
   for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field', 'recovery-missing-type',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
-    'recovery-http-header-name', 'recovery-http-header-value']) {
+    'recovery-http-header-name', 'recovery-http-header-value', ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
     const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
@@ -218,37 +222,56 @@ try {
     });
     assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
     const observation = result.structuredContent;
-    assert.equal(observation?.kind, server === 'http' || server.startsWith('recovery-http-') ? 'mcp-streamable-http' : 'mcp-stdio',
+    assert.equal(observation?.kind, server === 'http' || server.startsWith('recovery-http-') ? 'mcp-streamable-http'
+      : invalidSseServers.includes(server) ? 'mcp-sse' : 'mcp-stdio',
       `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });
   }
-  // SSE is optional. Preserve the native diagnostic even when the loader omits the entry.
-  const sse = status.data.find(({ name }) => name === 'sse');
-  let sseObservation;
-  if (sse && Object.hasOwn(sse.tools, 'observe')) {
-    const result = await rpc('mcpServer/tool/call', {
-      threadId: thread.id, server: 'sse', tool: 'observe', arguments: {},
-    });
-    assert.ok(!result.isError && !result.error, `sse: observe failed: ${JSON.stringify(result)}`);
-    sseObservation = result.structuredContent;
-    assert.equal(sseObservation?.kind, 'mcp-sse', 'sse: missing observation');
-    assert.equal(sseObservation.server, 'sse', 'sse: unexpected observation server');
-  } else {
-    const diagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
-      .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
-    const diagnostic = diagnostics.find((entry) => entry.fields?.server === 'sse' &&
-      entry.fields?.message === 'failed to parse plugin MCP server')?.fields?.error;
-    sseObservation = { kind: 'mcp-sse', server: 'sse', evidence: diagnostic
-      ? { type: 'error', message: diagnostic, classification: null } : null };
+  // SSE is optional. Preserve native diagnostics even when the loader omits entries.
+  const sseObservations = [];
+  for (const server of ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin']) {
+    const entry = status.data.find(({ name }) => name === server);
+    let observation;
+    if (entry && Object.hasOwn(entry.tools, 'observe')) {
+      const result = await rpc('mcpServer/tool/call', {
+        threadId: thread.id, server, tool: 'observe', arguments: {},
+      });
+      assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
+      observation = result.structuredContent;
+      assert.equal(observation?.kind, 'mcp-sse', `${server}: missing observation`);
+      assert.equal(observation.server, server, `${server}: unexpected observation server`);
+    } else {
+      const diagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
+        .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+      const diagnostic = diagnostics.find((item) => item.fields?.server === server &&
+        item.fields?.message === 'failed to parse plugin MCP server')?.fields?.error;
+      observation = { kind: 'mcp-sse', server, evidence: diagnostic
+        ? { type: 'error', message: diagnostic, classification: null } : null };
+    }
+    record({ action: 'record', observation });
+    sseObservations.push(observation);
   }
-  record({ action: 'record', observation: sseObservation });
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  assert.deepEqual(report.observations.find(({ kind }) => kind === 'mcp-sse'), sseObservation,
-    'SSE observation or native diagnostic was not preserved');
+  assert.deepEqual(report.observations.filter(({ kind, server }) => kind === 'mcp-sse' && !invalidSseServers.includes(server)), sseObservations,
+    'SSE observations or native diagnostics were not preserved');
+  const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    assert.equal(result.status, sseObservation.evidence?.type === 'request' ? 'pass' : 'not_verified',
-      `${result.id}: unexpected optional SSE outcome`);
+    if (['mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
+      'mcp.sse.headers.duplicate-names', 'mcp.sse.headers.invalid-name', 'mcp.sse.headers.invalid-value'].includes(result.id)) {
+      assert.equal(result.status, ['request', 'sse-session'].includes(baselineSse?.type) ? 'pass' : 'not_verified');
+      continue;
+    }
+    if (['mcp.sse.headers.cross-origin-redirect', 'mcp.sse.headers.cross-origin-endpoint'].includes(result.id)) {
+      const evidence = sseObservations.find(({ server }) => server === (result.id.endsWith('redirect') ? 'sse-redirect' : 'sse-endpoint-origin')).evidence;
+      if (evidence?.type !== 'sse-session') assert.equal(result.status, 'not_verified');
+      continue;
+    }
+    const successful = result.id === 'mcp.sse.headers.generated-precedence'
+      ? sseObservations.slice(0, 2).every(({ evidence }) => evidence?.type === 'sse-session')
+      : ['request', 'sse-session'].includes(baselineSse?.type) &&
+        (result.id !== 'mcp.sse.headers.literal-post-value' || baselineSse.type === 'sse-session');
+    assert.equal(result.status, successful ? 'pass' : 'not_verified', `${result.id}: unexpected optional SSE outcome`);
   }
   assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,
     'passed', 'HTTP fixture health check did not pass');

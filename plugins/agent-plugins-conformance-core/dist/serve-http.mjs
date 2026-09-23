@@ -22928,7 +22928,7 @@ var upgradeWebSocket = defineWebSocketHelper(async (c, events, options) => {
     } catch (e) {
       (options?.onError ?? console.error)(e);
     }
-    const handleMessage = (data, isBinary) => {
+    const handleMessage2 = (data, isBinary) => {
       const datas = Array.isArray(data) ? data : [data];
       for (const data2 of datas) try {
         events?.onMessage?.(new MessageEvent("message", { data: isBinary ? data2 instanceof ArrayBuffer ? data2 : data2.buffer.slice(data2.byteOffset, data2.byteOffset + data2.byteLength) : typeof data2 === "string" ? data2 : Buffer.from(data2).toString("utf-8") }), ctx);
@@ -22937,9 +22937,9 @@ var upgradeWebSocket = defineWebSocketHelper(async (c, events, options) => {
       }
     };
     ws.off("message", bufferMessage);
-    for (const message of messagesReceivedInStarting) handleMessage(...message);
+    for (const message of messagesReceivedInStarting) handleMessage2(...message);
     ws.on("message", (data, isBinary) => {
-      handleMessage(data, isBinary);
+      handleMessage2(data, isBinary);
     });
     ws.on("close", (code, reason) => {
       try {
@@ -23893,6 +23893,9 @@ async function handleRedirect(request, response, role) {
   }
 }
 
+// plugins/agent-plugins-conformance-core/src/sse.mjs
+import { randomUUID as randomUUID3 } from "node:crypto";
+
 // node_modules/.pnpm/@modelcontextprotocol+sdk@1.30.0_zod@4.6.4/node_modules/@modelcontextprotocol/sdk/dist/esm/server/sse.js
 import { randomUUID } from "node:crypto";
 import { TLSSocket } from "node:tls";
@@ -24045,51 +24048,170 @@ data: ${JSON.stringify(message)}
   }
 };
 
-// plugins/agent-plugins-conformance-core/src/sse.mjs
-var connectionPath = "/conformance/sse";
-var messagePath = "/conformance/sse/messages";
-var sessions = /* @__PURE__ */ new Map();
-async function handleSse(request, response, pathname2) {
-  if (pathname2 !== connectionPath && pathname2 !== messagePath) return false;
-  const method = pathname2 === connectionPath ? "GET" : "POST";
-  if (request.method !== method) {
-    response.writeHead(405, { Allow: method }).end();
-    return true;
+// plugins/agent-plugins-conformance-core/src/absolute-sse-transport.mjs
+import { randomUUID as randomUUID2 } from "node:crypto";
+var maximumMessageBytes = 4 * 1024 * 1024;
+var AbsoluteSseServerTransport = class {
+  constructor(endpoint, response, options = {}) {
+    this.endpoint = new URL(endpoint);
+    this.response = response;
+    this.options = options;
+    this.sessionId = randomUUID2();
+    this.started = false;
   }
-  if (pathname2 === messagePath) {
-    const ids = new URL(request.url, "http://127.0.0.1:43187").searchParams.getAll("sessionId");
-    const session = ids.length === 1 ? sessions.get(ids[0]) : void 0;
-    if (!session) {
-      response.writeHead(404).end("Unknown SSE session");
-      return true;
+  validateRequestHeaders(request) {
+    const host2 = request.headers.host;
+    if (this.options.allowedHosts?.length && (!host2 || !this.options.allowedHosts.includes(host2))) {
+      return `Invalid Host header: ${host2}`;
     }
+    const origin = request.headers.origin;
+    if (origin && this.options.allowedOrigins?.length && !this.options.allowedOrigins.includes(origin)) {
+      return `Invalid Origin header: ${origin}`;
+    }
+  }
+  async start() {
+    if (this.started) throw new Error("AbsoluteSseServerTransport already started");
+    this.started = true;
+    this.response.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive"
+    });
+    const endpoint = new URL(this.endpoint);
+    endpoint.searchParams.set("sessionId", this.sessionId);
+    this.response.write(`event: endpoint
+data: ${endpoint.href}
+
+`);
+    this.response.on("close", () => {
+      if (!this.started) return;
+      this.started = false;
+      this.onclose?.();
+    });
+  }
+  async handlePostMessage(request, response) {
+    if (!this.started) {
+      response.writeHead(500).end("SSE connection not established");
+      return;
+    }
+    const validationError = this.validateRequestHeaders(request);
+    if (validationError) {
+      response.writeHead(403).end(validationError);
+      this.onerror?.(new Error(validationError));
+      return;
+    }
+    if ((request.headers["content-type"] ?? "").split(";", 1)[0].trim().toLowerCase() !== "application/json") {
+      response.writeHead(400).end("Unsupported content-type");
+      return;
+    }
+    const chunks = [];
+    let bytes = 0;
+    for await (const chunk of request) {
+      bytes += chunk.length;
+      if (bytes > maximumMessageBytes) {
+        response.writeHead(413).end("Message exceeds 4 MiB");
+        return;
+      }
+      chunks.push(chunk);
+    }
+    let message;
     try {
-      await session.transport.handlePostMessage(request, response);
+      message = JSONRPCMessageSchema.parse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
     } catch (error2) {
-      console.error(`SSE fixture message error: ${error2.message}`);
-      if (!response.headersSent) response.writeHead(500).end();
-      else if (!response.writableEnded) response.destroy();
+      response.writeHead(400).end("Invalid JSON-RPC message");
+      this.onerror?.(error2);
+      return;
     }
-    return true;
+    this.onmessage?.(message);
+    response.writeHead(202).end("Accepted");
   }
-  const transport = new SSEServerTransport(messagePath, response, {
-    enableDnsRebindingProtection: true,
-    allowedHosts: ["127.0.0.1:43187"],
-    allowedOrigins: ["http://127.0.0.1:43187"]
-  });
-  const invalidHeaders = transport.validateRequestHeaders(request);
-  if (invalidHeaders) {
-    response.writeHead(403).end(invalidHeaders);
-    return true;
+  async send(message) {
+    if (!this.started) throw new Error("Not connected");
+    this.response.write(`event: message
+data: ${JSON.stringify(message)}
+
+`);
   }
-  const observation = { kind: "mcp-sse", server: "sse", evidence: requestEvidence(request) };
+  async close() {
+    if (!this.started) return;
+    this.started = false;
+    this.response.end();
+    this.onclose?.();
+  }
+};
+
+// plugins/agent-plugins-conformance-core/src/sse.mjs
+var sourceOrigin = "http://127.0.0.1:43187";
+var destinationOrigin = "http://127.0.0.1:43189";
+var redirectAttemptParameter = "apcRedirectAttempt";
+var redirectAttemptLifetime = 3e4;
+var sessions = /* @__PURE__ */ new Map();
+var redirectAttempts = /* @__PURE__ */ new Map();
+var fixtures = new Map([
+  [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
+    server: "sse-endpoint-origin",
+    expectedHeader: "public SSE endpoint fixture value",
+    messageOrigin: destinationOrigin,
+    messagePath: "/conformance/sse-endpoint-origin/messages"
+  }],
+  [`${sourceOrigin}/conformance/sse`, {
+    server: "sse",
+    expectedHeader: null,
+    messageOrigin: sourceOrigin,
+    messagePath: "/conformance/sse/messages"
+  }],
+  [`${sourceOrigin}/conformance/sse-header-precedence`, {
+    server: "sse-header-precedence",
+    expectedHeader: null,
+    messageOrigin: sourceOrigin,
+    messagePath: "/conformance/sse/messages"
+  }],
+  ...[
+    "recovery-sse-relative-url",
+    "recovery-sse-fragment",
+    "recovery-sse-userinfo",
+    "recovery-sse-duplicate-headers",
+    "recovery-sse-header-name",
+    "recovery-sse-header-value"
+  ].map((server) => [`${sourceOrigin}/conformance/${server}`, {
+    server,
+    expectedHeader: null,
+    messageOrigin: sourceOrigin,
+    messagePath: `/conformance/${server}/messages`
+  }])
+]);
+function connectionEvidence(request, listenerOrigin) {
+  const received = requestEvidence(request);
+  return {
+    origin: listenerOrigin,
+    pathname: received.pathname,
+    query: received.query,
+    headers: {
+      "x-apc-fixture": received.headers["x-apc-fixture"],
+      accept: request.headers.accept ?? null
+    }
+  };
+}
+function validateConnectionHeaders(request, listenerOrigin) {
+  const expectedHost = new URL(listenerOrigin).host;
+  if (request.headers.host !== expectedHost) return `Invalid Host header: ${request.headers.host}`;
+  const origin = request.headers.origin;
+  if (origin && origin !== sourceOrigin && origin !== destinationOrigin) return `Invalid Origin header: ${origin}`;
+}
+function messageEvidence(request, listenerOrigin) {
+  return {
+    origin: listenerOrigin,
+    headers: { "x-apc-fixture": request.headers["x-apc-fixture"] ?? null }
+  };
+}
+function makeServer(serverId, evidence) {
   const server = new Server(
-    { name: "agent-plugins-conformance-sse", version: "0.1.0" },
+    { name: `agent-plugins-conformance-${serverId}`, version: "0.1.0" },
     { capabilities: { tools: {} } }
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: "observe",
-    description: "Agent Plugins Conformance \u2014 Core, server ID: sse. Return this legacy SSE connection\u2019s initial URL pathname, decoded query pairs, and public x-apc-fixture header. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+    description: `Agent Plugins Conformance \u2014 ${serverId.startsWith("recovery-") ? "Recovery" : "Core"}, server ID: ${serverId}. Return this legacy SSE session's public connection and message evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }] }));
@@ -24100,9 +24222,29 @@ async function handleSse(request, response, pathname2) {
     if (!params.arguments || typeof params.arguments !== "object" || Array.isArray(params.arguments) || Object.keys(params.arguments).length !== 0) {
       return { isError: true, content: [{ type: "text", text: "observe requires an empty object" }] };
     }
+    const observation = structuredClone({ kind: "mcp-sse", server: serverId, evidence });
     return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
   });
-  sessions.set(transport.sessionId, { server, transport });
+  return server;
+}
+async function openSession(request, response, fixture, connection, redirectSource = null) {
+  const evidence = { type: "sse-session", version: 1, connection, redirectSource, messages: [] };
+  const endpoint = `${fixture.messageOrigin}${fixture.messagePath}`;
+  const options = {
+    enableDnsRebindingProtection: true,
+    allowedHosts: [new URL(fixture.messageOrigin).host],
+    allowedOrigins: [sourceOrigin, destinationOrigin]
+  };
+  const transport = fixture.messageOrigin === connection.origin ? new SSEServerTransport(fixture.messagePath, response, options) : new AbsoluteSseServerTransport(endpoint, response, options);
+  const server = makeServer(fixture.server, evidence);
+  const session = {
+    server,
+    transport,
+    evidence,
+    messageOrigin: fixture.messageOrigin,
+    messagePath: fixture.messagePath
+  };
+  sessions.set(transport.sessionId, session);
   response.once("close", () => {
     sessions.delete(transport.sessionId);
     void server.close();
@@ -24116,11 +24258,105 @@ async function handleSse(request, response, pathname2) {
     else response.destroy();
     await server.close();
   }
+}
+async function handleMessage(request, response, pathname2, listenerOrigin) {
+  const ids = new URL(request.url, listenerOrigin).searchParams.getAll("sessionId");
+  const session = ids.length === 1 ? sessions.get(ids[0]) : void 0;
+  if (!session || session.messageOrigin !== listenerOrigin || session.messagePath !== pathname2) {
+    response.writeHead(404).end("Unknown SSE session");
+    return;
+  }
+  session.evidence.messages.push(messageEvidence(request, listenerOrigin));
+  try {
+    await session.transport.handlePostMessage(request, response);
+  } catch (error2) {
+    console.error(`SSE fixture message error: ${error2.message}`);
+    if (!response.headersSent) response.writeHead(500).end();
+    else if (!response.writableEnded) response.destroy();
+  }
+}
+function redirectToDestination(request, response) {
+  const source = connectionEvidence(request, sourceOrigin);
+  if (source.headers["x-apc-fixture"] !== "public SSE redirect fixture value") {
+    response.writeHead(403).end("The source did not receive the expected public configured header.");
+    return;
+  }
+  const attemptId = randomUUID3();
+  const timer = setTimeout(() => redirectAttempts.delete(attemptId), redirectAttemptLifetime);
+  timer.unref();
+  redirectAttempts.set(attemptId, { source, timer });
+  const destination2 = new URL("/conformance/sse-redirect", destinationOrigin);
+  destination2.search = new URL(request.url, sourceOrigin).search;
+  destination2.searchParams.set(redirectAttemptParameter, attemptId);
+  response.writeHead(307, { Location: destination2.href, "Cache-Control": "no-store" }).end();
+}
+async function openRedirectDestination(request, response) {
+  const url2 = new URL(request.url, destinationOrigin);
+  const ids = url2.searchParams.getAll(redirectAttemptParameter);
+  const attempt = ids.length === 1 ? redirectAttempts.get(ids[0]) : void 0;
+  if (!attempt) {
+    response.writeHead(404).end("Unknown SSE redirect attempt");
+    return;
+  }
+  clearTimeout(attempt.timer);
+  redirectAttempts.delete(ids[0]);
+  const fixture = {
+    server: "sse-redirect",
+    messageOrigin: sourceOrigin,
+    messagePath: "/conformance/sse-redirect/messages"
+  };
+  await openSession(
+    request,
+    response,
+    fixture,
+    connectionEvidence(request, destinationOrigin),
+    attempt.source
+  );
+}
+async function handleSse(request, response, pathname2, listenerOrigin) {
+  const isMessagePath = pathname2 === "/conformance/sse-redirect/messages" || [...fixtures.values()].some((fixture2) => fixture2.messagePath === pathname2);
+  if (isMessagePath) {
+    if (request.method !== "POST") {
+      response.writeHead(405, { Allow: "POST" }).end();
+      return true;
+    }
+    await handleMessage(request, response, pathname2, listenerOrigin);
+    return true;
+  }
+  const fixture = fixtures.get(`${listenerOrigin}${pathname2}`);
+  const isRedirectSource = listenerOrigin === sourceOrigin && pathname2 === "/conformance/sse-redirect";
+  const isRedirectDestination = listenerOrigin === destinationOrigin && pathname2 === "/conformance/sse-redirect";
+  if (!fixture && !isRedirectSource && !isRedirectDestination) return false;
+  if (request.method !== "GET") {
+    response.writeHead(405, { Allow: "GET" }).end();
+    return true;
+  }
+  const invalidHeaders = validateConnectionHeaders(request, listenerOrigin);
+  if (invalidHeaders) {
+    response.writeHead(403).end(invalidHeaders);
+    return true;
+  }
+  if (isRedirectSource) {
+    redirectToDestination(request, response);
+    return true;
+  }
+  if (isRedirectDestination) {
+    await openRedirectDestination(request, response);
+    return true;
+  }
+  const connection = connectionEvidence(request, listenerOrigin);
+  if (fixture.expectedHeader && connection.headers["x-apc-fixture"] !== fixture.expectedHeader) {
+    response.writeHead(403).end("The source did not receive the expected public configured header.");
+    return true;
+  }
+  await openSession(request, response, fixture, connection);
   return true;
 }
 function closeSseSessions() {
   for (const { server } of sessions.values()) void server.close();
   sessions.clear();
+  for (const { timer } of redirectAttempts.values()) clearTimeout(timer);
+  redirectAttempts.clear();
 }
 
 // plugins/agent-plugins-conformance-core/src/serve-http.mjs
@@ -24139,7 +24375,7 @@ var recoveryRoutes = /* @__PURE__ */ new Map([
 var listener = createServer(async (request, response) => {
   const separator = request.url.indexOf("?");
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
-  if (await handleSse(request, response, requestPathname)) return;
+  if (await handleSse(request, response, requestPathname, `http://${host}:${port}`)) return;
   if (requestPathname === "/conformance/redirect") {
     await handleRedirect(request, response, "source");
     return;
@@ -24199,7 +24435,12 @@ var listener = createServer(async (request, response) => {
     await server.close();
   }
 });
-var redirectDestination = createServer((request, response) => handleRedirect(request, response, "destination"));
+var redirectDestination = createServer(async (request, response) => {
+  const separator = request.url.indexOf("?");
+  const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
+  if (await handleSse(request, response, requestPathname, `http://${host}:43189`)) return;
+  await handleRedirect(request, response, "destination");
+});
 var listeners = [
   { server: listener, port, url },
   { server: redirectDestination, port: 43189, url: `http://${host}:43189/conformance/redirect` }

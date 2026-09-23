@@ -69,6 +69,27 @@
       "headers": {
         "x-apc-fixture": "public redirect fixture value"
       }
+    },
+    "sse-header-precedence": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse-header-precedence",
+      "headers": {
+        "AcCePt": "application/x-apc-configured"
+      }
+    },
+    "sse-redirect": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse-redirect",
+      "headers": {
+        "x-apc-fixture": "public SSE redirect fixture value"
+      }
+    },
+    "sse-endpoint-origin": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse-endpoint-origin",
+      "headers": {
+        "x-apc-fixture": "public SSE endpoint fixture value"
+      }
     }
   }
 }

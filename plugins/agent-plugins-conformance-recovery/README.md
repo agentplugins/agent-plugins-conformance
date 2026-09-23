@@ -22,5 +22,11 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.streamable-http.headers.duplicate-names` | An HTTP server with header names that duplicate one another under different casing is excluded. |
 | `mcp.streamable-http.headers.invalid-name` | An HTTP server with an invalid configured header name is excluded. |
 | `mcp.streamable-http.headers.invalid-value` | An HTTP server with an invalid configured header value is excluded. |
+| `mcp.sse.url.relative` | A legacy HTTP+SSE server with a scheme-relative URL (`//host/path`) is excluded. |
+| `mcp.sse.url.fragment` | A legacy HTTP+SSE server whose URL contains a fragment is excluded. |
+| `mcp.sse.url.userinfo` | A legacy HTTP+SSE server whose URL contains user information is excluded. |
+| `mcp.sse.headers.duplicate-names` | A legacy HTTP+SSE server with header names that duplicate one another under different casing is excluded. |
+| `mcp.sse.headers.invalid-name` | A legacy HTTP+SSE server with an invalid configured header name is excluded. |
+| `mcp.sse.headers.invalid-value` | A legacy HTTP+SSE server with an invalid configured header value is excluded. |
 
 The availability checks exercise the combined configuration. They do not evaluate diagnostics, determine how the client treated individual invalid entries, or isolate the effect of each invalid field or entry.
