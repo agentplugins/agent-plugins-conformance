@@ -1,0 +1,49 @@
+name: Paired command prototype
+on:
+  push:
+    branches: [agent/command-token-prototype]
+permissions:
+  contents: read
+jobs:
+  prototype:
+    name: Paired command (${{ matrix.os }})
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            binary: codex-x86_64-unknown-linux-musl
+          - os: windows-latest
+            binary: codex-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/build.mjs
+      - name: Exercise paired launch mechanisms
+        run: node --test prototype/reference-command-token.test.mjs
+      - name: Install pinned Codex
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CODEX_VERSION: 0.155.1
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: |
+          curl --fail --location "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_BINARY}.tar.gz" --output codex.tar.gz
+          tar -xzf codex.tar.gz
+      - name: Collect native plugin observations
+        shell: bash
+        env:
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: node prototype/native-command-token.mjs "$RUNNER_TEMP/$CODEX_BINARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-command-${{ matrix.os }}
+          path: reports/

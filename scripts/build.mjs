@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 
 for (const plugin of ['agent-plugins-conformance-core', 'agent-plugins-conformance-recovery']) {
   const directory = `plugins/${plugin}`;
-  const entries = plugin === 'agent-plugins-conformance-core' ? ['probe', 'serve-http'] : ['probe'];
+  const entries = plugin === 'agent-plugins-conformance-core' ? ['probe', 'serve-http', 'command-token-probe'] : ['probe'];
   const result = await build({
     entryPoints: entries.map((entry) => `${directory}/src/${entry}.mjs`), bundle: true, platform: 'node', target: 'node22',
     format: 'esm', outdir: `${directory}/dist`, outExtension: { '.js': '.mjs' }, metafile: true, legalComments: 'inline',
