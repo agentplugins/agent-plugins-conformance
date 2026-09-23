@@ -138,6 +138,48 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     url: 'http://127.0.0.1:43187/conformance/recovery-http-header-value',
     headers: { 'x-apc-fixture': 'first\r\nsecond' },
   });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-relative-url'], {
+    type: 'sse',
+    url: '//127.0.0.1:43187/conformance/recovery-sse-relative-url',
+  });
+  const isolatedSseRelative = {
+    $schema: mcp.$schema,
+    mcpServers: { 'recovery-sse-relative-url': structuredClone(mcp.mcpServers['recovery-sse-relative-url']) },
+  };
+  assert.equal(validateMcp(isolatedSseRelative), true, JSON.stringify(validateMcp.errors));
+  assert.deepEqual(mcp.mcpServers['recovery-sse-fragment'], {
+    type: 'sse',
+    url: 'http://127.0.0.1:43187/conformance/recovery-sse-fragment#invalid-fragment',
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-userinfo'], {
+    type: 'sse',
+    url: 'http://fixture:fixture@127.0.0.1:43187/conformance/recovery-sse-userinfo',
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-duplicate-headers'], {
+    type: 'sse',
+    url: 'http://127.0.0.1:43187/conformance/recovery-sse-duplicate-headers',
+    headers: { 'X-Apc-Duplicate': 'first', 'x-apc-duplicate': 'second' },
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-header-name'], {
+    type: 'sse',
+    url: 'http://127.0.0.1:43187/conformance/recovery-sse-header-name',
+    headers: { 'X Apc Fixture': 'fixture' },
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-header-value'], {
+    type: 'sse',
+    url: 'http://127.0.0.1:43187/conformance/recovery-sse-header-value',
+    headers: { 'x-apc-fixture': 'first\r\nsecond' },
+  });
+  for (const server of [
+    'recovery-sse-fragment', 'recovery-sse-userinfo', 'recovery-sse-duplicate-headers',
+    'recovery-sse-header-name', 'recovery-sse-header-value',
+  ]) {
+    const isolated = { $schema: mcp.$schema, mcpServers: { [server]: mcp.mcpServers[server] } };
+    assert.equal(validateMcp(isolated), true, `${server}: ${JSON.stringify(validateMcp.errors)}`);
+  }
+  isolatedSseRelative.mcpServers['recovery-sse-relative-url'].url =
+    `http:${isolatedSseRelative.mcpServers['recovery-sse-relative-url'].url}`;
+  assert.equal(validateMcp(isolatedSseRelative), true, JSON.stringify(validateMcp.errors));
   const recoveryRoot = fileURLToPath(new URL('../plugins/agent-plugins-conformance-recovery/', import.meta.url));
   const escapeLink = resolve(recoveryRoot, 'escape-link');
   assert.equal((await lstat(escapeLink)).isSymbolicLink(), true);

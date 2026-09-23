@@ -89,19 +89,21 @@ async function connect(t, query = '', headers = {}) {
   return client;
 }
 
-async function connectSse(t, query = '', headers = {}) {
+async function connectSseAt(t, endpointUrl, query = '', headers = {}, fetchImpl = fetch) {
   const requests = [];
   const client = new Client({ name: 'conformance-sse-reference-test', version: '1' });
   t.after(() => client.close());
-  await client.connect(new SSEClientTransport(new URL(`${sseEndpoint}${query}`), {
+  await client.connect(new SSEClientTransport(new URL(`${endpointUrl}${query}`), {
     requestInit: { headers },
     fetch: async (input, init) => {
       requests.push({ method: init?.method ?? 'GET', url: String(input) });
-      return fetch(input, init);
+      return fetchImpl(input, init);
     },
   }));
   return { client, requests };
 }
+
+const connectSse = (t, query = '', headers = {}) => connectSseAt(t, sseEndpoint, query, headers);
 
 function eventReader(response) {
   const reader = response.body.getReader();
@@ -494,6 +496,111 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     const report = buildReport({ schemaVersion: 1, observations: [result.structuredContent] });
     assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.cross-origin-redirect').status,
       result.structuredContent.evidence.connection.headers['x-apc-fixture'] === null ? 'pass' : 'fail');
+  });
+
+  await t.test('scheme-relative SSE URL route has a valid control and a deliberately permissive failure witness', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const serverName = 'recovery-sse-relative-url';
+    const configured = mcp.mcpServers[serverName];
+    assert.deepEqual(configured, {
+      type: 'sse',
+      url: '//127.0.0.1:43187/conformance/recovery-sse-relative-url',
+    });
+
+    const correctedUrl = `http:${configured.url}`;
+    const observe = async (url) => {
+      const { client } = await connectSseAt(t, String(url));
+      assert.equal(client.getServerVersion().name, `agent-plugins-conformance-${serverName}`);
+      assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      const expected = {
+        kind: 'mcp-sse', server: serverName, evidence: {
+          type: 'sse-session', version: 1,
+          connection: { origin, pathname: `/conformance/${serverName}`, query: [],
+            headers: { 'x-apc-fixture': null, accept: 'text/event-stream' } },
+          redirectSource: null,
+          messages: Array.from({ length: 4 }, () => ({ origin, headers: { 'x-apc-fixture': null } })),
+        },
+      };
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, expected);
+      assert.deepEqual(JSON.parse(result.content[0].text), expected);
+      return result.structuredContent;
+    };
+
+    const validControl = await observe(new URL(correctedUrl));
+    const permissiveUrl = new URL(configured.url, 'http://fixture.invalid/');
+    assert.equal(permissiveUrl.href, correctedUrl);
+    assert.deepEqual(await observe(permissiveUrl), validControl);
+    assert.equal(configured.url, '//127.0.0.1:43187/conformance/recovery-sse-relative-url');
+  });
+
+  await t.test('invalid SSE URL and header routes have valid controls and permissive failure witnesses', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const observe = async (serverName, { url, headers = {}, fetch: fetchImpl, expectedHeader = null }) => {
+      const { client } = await connectSseAt(t, String(url), '', headers, fetchImpl);
+      assert.equal(client.getServerVersion().name, `agent-plugins-conformance-${serverName}`);
+      assert.deepEqual((await client.listTools()).tools.map(({ name }) => name), ['observe']);
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      const expected = {
+        kind: 'mcp-sse', server: serverName, evidence: {
+          type: 'sse-session', version: 1,
+          connection: { origin, pathname: `/conformance/${serverName}`, query: [],
+            headers: { 'x-apc-fixture': expectedHeader, accept: 'text/event-stream' } },
+          redirectSource: null,
+          messages: Array.from({ length: 4 }, () => ({ origin, headers: { 'x-apc-fixture': expectedHeader } })),
+        },
+      };
+      assert.equal(result.isError, undefined);
+      assert.deepEqual(result.structuredContent, expected);
+      assert.deepEqual(JSON.parse(result.content[0].text), expected);
+    };
+
+    const fragment = mcp.mcpServers['recovery-sse-fragment'];
+    const fragmentControl = new URL(fragment.url);
+    fragmentControl.hash = '';
+    await observe('recovery-sse-fragment', { url: fragmentControl });
+    await observe('recovery-sse-fragment', { url: new URL(fragment.url) });
+    assert.equal(fragment.url.endsWith('#invalid-fragment'), true);
+
+    const userinfo = mcp.mcpServers['recovery-sse-userinfo'];
+    const userinfoControl = new URL(userinfo.url);
+    userinfoControl.username = '';
+    userinfoControl.password = '';
+    await observe('recovery-sse-userinfo', { url: userinfoControl });
+    let permissiveRequests = 0;
+    await observe('recovery-sse-userinfo', {
+      url: new URL(userinfo.url),
+      fetch: async (input, init) => {
+        const original = new URL(input instanceof Request ? input.url : String(input));
+        assert.equal(original.username, 'fixture');
+        assert.equal(original.password, 'fixture');
+        original.username = '';
+        original.password = '';
+        permissiveRequests += 1;
+        return fetch(original, init);
+      },
+    });
+    assert.ok(permissiveRequests > 0);
+
+    const duplicate = mcp.mcpServers['recovery-sse-duplicate-headers'];
+    await observe('recovery-sse-duplicate-headers', {
+      url: new URL(duplicate.url), headers: { 'x-apc-duplicate': 'second' },
+    });
+    await observe('recovery-sse-duplicate-headers', {
+      url: new URL(duplicate.url), headers: duplicate.headers,
+    });
+    assert.deepEqual(duplicate.headers, { 'X-Apc-Duplicate': 'first', 'x-apc-duplicate': 'second' });
+
+    for (const { serverName, correctedHeaders, correctedValue } of [
+      { serverName: 'recovery-sse-header-name', correctedHeaders: { 'X-Apc-Fixture': 'fixture' }, correctedValue: 'fixture' },
+      { serverName: 'recovery-sse-header-value', correctedHeaders: { 'x-apc-fixture': 'first second' }, correctedValue: 'first second' },
+    ]) {
+      const configured = mcp.mcpServers[serverName];
+      await observe(serverName, { url: new URL(configured.url), headers: correctedHeaders, expectedHeader: correctedValue });
+      // Model an incorrect loader that accepts the entry and drops its malformed header.
+      await observe(serverName, { url: new URL(configured.url) });
+    }
   });
 
   await t.test('SDK connects despite a conflicting configured Accept header', async (t) => {

@@ -58,11 +58,19 @@ const invalidHttpServerCases = [
   ['recovery-http-header-name', 'mcp.streamable-http.headers.invalid-name'],
   ['recovery-http-header-value', 'mcp.streamable-http.headers.invalid-value'],
 ];
+const invalidSseServerCases = [
+  ['recovery-sse-relative-url', 'mcp.sse.url.relative'],
+  ['recovery-sse-fragment', 'mcp.sse.url.fragment'],
+  ['recovery-sse-userinfo', 'mcp.sse.url.userinfo'],
+  ['recovery-sse-duplicate-headers', 'mcp.sse.headers.duplicate-names'],
+  ['recovery-sse-header-name', 'mcp.sse.headers.invalid-name'],
+  ['recovery-sse-header-value', 'mcp.sse.headers.invalid-value'],
+];
 
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 29, total: 45 });
+  assert.deepEqual(report.summary, { pass: 16, fail: 0, not_verified: 35, total: 51 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -75,19 +83,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 29, total: 45 });
+  assert.deepEqual(coreOnly.summary, { pass: 16, fail: 0, not_verified: 35, total: 51 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 43, total: 45 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 49, total: 51 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 26, total: 45 });
+  assert.deepEqual(combined.summary, { pass: 19, fail: 0, not_verified: 32, total: 51 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -110,7 +118,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 45, total: 45 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 51, total: 51 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -121,7 +129,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 43, total: 45 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 49, total: 51 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -136,11 +144,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 45, total: 45 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 51, total: 51 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 38);
+  assert.equal(mcp.length, 44);
   assert.equal(report.results.filter(({ id }) => id.startsWith('filesystem.')).length, 4);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
@@ -556,7 +564,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 25, total: 45 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 20 : 19, fail: status === 'fail' ? 1 : 0, not_verified: 31, total: 51 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));
@@ -686,6 +694,10 @@ const sseSessionObservation = () => ({
     ],
   },
 });
+const invalidSseRuntime = (server, evidence = {
+  type: 'request', version: 1, pathname: `/conformance/${server}`, query: [],
+  headers: { 'x-apc-fixture': null },
+}) => ({ kind: 'mcp-sse', server, evidence });
 const sseResults = (report) => report.results.filter(({ id }) => [
   'mcp.sse.tool-availability',
   'mcp.sse.url.literal-route-and-query',
@@ -1151,5 +1163,79 @@ test('invalid HTTP discovery and runtime schemas are strict and independently un
   assert.doesNotThrow(() => buildReport({
     schemaVersion: 1,
     observations: invalidHttpServerCases.map(([server]) => invalidHttpRuntime(server)),
+  }));
+});
+
+test('invalid SSE servers require exclusion discovery and successful stdio and SSE controls', () => {
+  const recoveryRuntime = recoveryObservations()[1];
+  for (const [server, id] of invalidSseServerCases) {
+    const absent = invalidServerDiscovery(server, false);
+    const advertised = invalidServerDiscovery(server, true);
+    for (const [observations, status] of [
+      [[], 'not_verified'],
+      [[absent], 'not_verified'],
+      [[recoveryRuntime, sseObservation()], 'not_verified'],
+      [[absent, recoveryRuntime], 'not_verified'],
+      [[absent, sseObservation()], 'not_verified'],
+      [[absent, recoveryRuntime, { kind: 'mcp-sse', server: 'sse', evidence: null }], 'not_verified'],
+      [[absent, recoveryRuntime, { kind: 'mcp-sse', server: 'sse', evidence: {
+        type: 'error', message: 'unsupported transport', classification: null,
+      } }], 'not_verified'],
+      [[absent, recoveryRuntime, sseObservation()], 'pass'],
+      [[absent, recoveryRuntime, sseSessionObservation()], 'pass'],
+      [[advertised], 'fail'],
+      [[advertised, recoveryRuntime, sseObservation()], 'fail'],
+      [[invalidSseRuntime(server)], 'fail'],
+      [[{ ...sseSessionObservation(), server }], 'fail'],
+      [[absent, invalidSseRuntime(server)], 'fail'],
+      [[absent, recoveryRuntime, sseObservation(), invalidSseRuntime(server)], 'fail'],
+      [[absent, recoveryRuntime, sseSessionObservation(), { ...sseSessionObservation(), server }], 'fail'],
+      [[absent, recoveryRuntime, sseObservation(), {
+        kind: 'mcp-sse', server, evidence: { type: 'error', message: 'native error', classification: null },
+      }], 'not_verified'],
+      [[advertised, recoveryRuntime, sseObservation(), { kind: 'mcp-sse', server, evidence: null }], 'fail'],
+    ]) {
+      const report = buildReport({ schemaVersion: 1, observations });
+      assert.equal(result(report, id).status, status, `${server}: ${JSON.stringify(observations)}`);
+    }
+  }
+});
+
+test('invalid SSE server evidence is evaluated independently across server identities', () => {
+  const controls = [recoveryObservations()[1], sseObservation()];
+  const discoveries = invalidSseServerCases.map(([server]) => invalidServerDiscovery(server, false));
+  const baseline = buildReport({ schemaVersion: 1, observations: [...discoveries, ...controls] });
+  for (const [, id] of invalidSseServerCases) assert.equal(result(baseline, id).status, 'pass');
+
+  for (const [failedServer, failedId] of invalidSseServerCases) {
+    const report = buildReport({
+      schemaVersion: 1,
+      observations: [...discoveries, ...controls, invalidSseRuntime(failedServer)],
+    });
+    assert.equal(result(report, failedId).status, 'fail');
+    for (const [server, id] of invalidSseServerCases) {
+      if (server !== failedServer) assert.equal(result(report, id).status, 'pass');
+    }
+    assert.deepEqual(buildReport({ schemaVersion: 1, observations: report.observations }), report);
+  }
+});
+
+test('invalid SSE discovery and runtime schemas are strict and independently unique', () => {
+  for (const [server] of invalidSseServerCases) {
+    const discovery = invalidServerDiscovery(server, false);
+    assert.doesNotThrow(() => buildReport({ schemaVersion: 1, observations: [discovery] }));
+    assert.throws(() => buildReport({
+      schemaVersion: 1, observations: [discovery, invalidServerDiscovery(server, true)],
+    }), /duplicate/);
+
+    const valid = invalidSseRuntime(server);
+    const malformed = structuredClone(valid);
+    malformed.evidence.version = 2;
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [malformed] }), TypeError);
+    assert.throws(() => buildReport({ schemaVersion: 1, observations: [valid, structuredClone(valid)] }), /duplicate/);
+  }
+  assert.doesNotThrow(() => buildReport({
+    schemaVersion: 1,
+    observations: invalidSseServerCases.map(([server]) => invalidSseRuntime(server)),
   }));
 });

@@ -21,11 +21,23 @@ const INVALID_HTTP_SERVERS = Object.freeze({
   'recovery-http-header-name': 'mcp.streamable-http.headers.invalid-name',
   'recovery-http-header-value': 'mcp.streamable-http.headers.invalid-value',
 });
+const INVALID_SSE_SERVERS = Object.freeze({
+  'recovery-sse-relative-url': 'mcp.sse.url.relative',
+  'recovery-sse-fragment': 'mcp.sse.url.fragment',
+  'recovery-sse-userinfo': 'mcp.sse.url.userinfo',
+  'recovery-sse-duplicate-headers': 'mcp.sse.headers.duplicate-names',
+  'recovery-sse-header-name': 'mcp.sse.headers.invalid-name',
+  'recovery-sse-header-value': 'mcp.sse.headers.invalid-value',
+});
 const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
-const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
+const RECOVERY_INVALID_SERVER_NAMES = [
+  ...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS), ...Object.keys(INVALID_SSE_SERVERS),
+];
 const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
-const SSE_SERVERS = ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin'];
+const SSE_SERVERS = [
+  'sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin', ...Object.keys(INVALID_SSE_SERVERS),
+];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -582,6 +594,28 @@ export function buildReport(input) {
       set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
     }
   }
+  for (const [server, id] of Object.entries(INVALID_SSE_SERVERS)) {
+    const observation = sse.get(server);
+    const advertised = invalidServerDiscovery.get(server);
+    if (['request', 'sse-session'].includes(observation?.evidence?.type)) {
+      set(id, 'fail', `The invalid ${server} entry returned runtime evidence.`);
+    } else if (advertised === true) {
+      set(id, 'fail', `Agent reported the ${server} observe tool advertised by the client.`);
+    } else if (observation) {
+      set(id, 'not_verified', `The completed native attempt for ${server} did not establish exclusion; its evidence is preserved in the observation.`);
+    } else if (advertised === false) {
+      const validSseRuntime = ['request', 'sse-session'].includes(sseObservation?.evidence?.type);
+      const missing = [
+        ...(runtime.has('recovery-valid') ? [] : ['recovery-valid']),
+        ...(validSseRuntime ? [] : ['sse']),
+      ];
+      set(id, missing.length ? 'not_verified' : 'pass', missing.length
+        ? `Agent reported the ${server} tool absent, but valid runtime evidence is missing for: ${missing.join(', ')}.`
+        : `Agent reported the ${server} tool absent from the client inventory while recovery-valid and sse runtime evidence was available.`);
+    } else {
+      set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
+    }
+  }
   const coreData = CORE_SERVERS.filter((server) => runtime.get(server)?.resolvedData != null)
     .map((server) => [server, runtime.get(server).resolvedData]);
   const missingCoreData = CORE_SERVERS.filter((server) => runtime.get(server)?.resolvedData == null);
@@ -707,7 +741,7 @@ export function buildReport(input) {
     summary,
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
-      'HTTP error classifications are the agent’s interpretation of the preserved native diagnostic.',
+      'Remote MCP error classifications are the agent’s interpretation of the preserved native diagnostic.',
       'Null Streamable HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
       'SSE support is optional; missing, null, or error evidence does not establish nonconformance.',
       'Skill markers and skill or MCP discovery observations are agent assertions about client-loaded components and advertised availability, not independent proof.',

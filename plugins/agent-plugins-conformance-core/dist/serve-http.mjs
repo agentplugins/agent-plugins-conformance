@@ -24147,7 +24147,7 @@ var redirectAttemptParameter = "apcRedirectAttempt";
 var redirectAttemptLifetime = 3e4;
 var sessions = /* @__PURE__ */ new Map();
 var redirectAttempts = /* @__PURE__ */ new Map();
-var fixtures = /* @__PURE__ */ new Map([
+var fixtures = new Map([
   [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
     server: "sse-endpoint-origin",
     expectedHeader: "public SSE endpoint fixture value",
@@ -24165,7 +24165,20 @@ var fixtures = /* @__PURE__ */ new Map([
     expectedHeader: null,
     messageOrigin: sourceOrigin,
     messagePath: "/conformance/sse/messages"
-  }]
+  }],
+  ...[
+    "recovery-sse-relative-url",
+    "recovery-sse-fragment",
+    "recovery-sse-userinfo",
+    "recovery-sse-duplicate-headers",
+    "recovery-sse-header-name",
+    "recovery-sse-header-value"
+  ].map((server) => [`${sourceOrigin}/conformance/${server}`, {
+    server,
+    expectedHeader: null,
+    messageOrigin: sourceOrigin,
+    messagePath: `/conformance/${server}/messages`
+  }])
 ]);
 function connectionEvidence(request, listenerOrigin) {
   const received = requestEvidence(request);
@@ -24198,7 +24211,7 @@ function makeServer(serverId, evidence) {
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: "observe",
-    description: `Agent Plugins Conformance \u2014 Core, server ID: ${serverId}. Return this legacy SSE session's public connection and message evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
+    description: `Agent Plugins Conformance \u2014 ${serverId.startsWith("recovery-") ? "Recovery" : "Core"}, server ID: ${serverId}. Return this legacy SSE session's public connection and message evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   }] }));
@@ -24301,7 +24314,7 @@ async function openRedirectDestination(request, response) {
   );
 }
 async function handleSse(request, response, pathname2, listenerOrigin) {
-  const isMessagePath = pathname2 === "/conformance/sse-endpoint-origin/messages" || pathname2 === "/conformance/sse/messages" || pathname2 === "/conformance/sse-redirect/messages";
+  const isMessagePath = pathname2 === "/conformance/sse-redirect/messages" || [...fixtures.values()].some((fixture2) => fixture2.messagePath === pathname2);
   if (isMessagePath) {
     if (request.method !== "POST") {
       response.writeHead(405, { Allow: "POST" }).end();

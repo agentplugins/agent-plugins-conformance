@@ -25,6 +25,13 @@ const fixtures = new Map([
     server: 'sse-header-precedence', expectedHeader: null,
     messageOrigin: sourceOrigin, messagePath: '/conformance/sse/messages',
   }],
+  ...[
+    'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
+    'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
+  ].map((server) => [`${sourceOrigin}/conformance/${server}`, {
+    server, expectedHeader: null,
+    messageOrigin: sourceOrigin, messagePath: `/conformance/${server}/messages`,
+  }]),
 ]);
 
 function connectionEvidence(request, listenerOrigin) {
@@ -59,7 +66,7 @@ function makeServer(serverId, evidence) {
     { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [{
     name: 'observe',
-    description: `Agent Plugins Conformance — Core, server ID: ${serverId}. Return this legacy SSE session's public connection and message evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
+    description: `Agent Plugins Conformance — ${serverId.startsWith('recovery-') ? 'Recovery' : 'Core'}, server ID: ${serverId}. Return this legacy SSE session's public connection and message evidence. Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.`,
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }] }));
@@ -167,9 +174,8 @@ async function openRedirectDestination(request, response) {
 }
 
 export async function handleSse(request, response, pathname, listenerOrigin) {
-  const isMessagePath = pathname === '/conformance/sse-endpoint-origin/messages' ||
-    pathname === '/conformance/sse/messages' ||
-    pathname === '/conformance/sse-redirect/messages';
+  const isMessagePath = pathname === '/conformance/sse-redirect/messages' ||
+    [...fixtures.values()].some((fixture) => fixture.messagePath === pathname);
   if (isMessagePath) {
     if (request.method !== 'POST') {
       response.writeHead(405, { Allow: 'POST' }).end();

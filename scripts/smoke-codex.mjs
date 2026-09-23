@@ -17,6 +17,10 @@ assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
 const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
+const invalidSseServers = [
+  'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
+  'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
+];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
   id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
@@ -200,7 +204,7 @@ try {
   for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field', 'recovery-missing-type',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
-    'recovery-http-header-name', 'recovery-http-header-value']) {
+    'recovery-http-header-name', 'recovery-http-header-value', ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
     const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
@@ -218,7 +222,8 @@ try {
     });
     assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
     const observation = result.structuredContent;
-    assert.equal(observation?.kind, server === 'http' || server.startsWith('recovery-http-') ? 'mcp-streamable-http' : 'mcp-stdio',
+    assert.equal(observation?.kind, server === 'http' || server.startsWith('recovery-http-') ? 'mcp-streamable-http'
+      : invalidSseServers.includes(server) ? 'mcp-sse' : 'mcp-stdio',
       `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });
@@ -248,10 +253,15 @@ try {
     sseObservations.push(observation);
   }
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  assert.deepEqual(report.observations.filter(({ kind }) => kind === 'mcp-sse'), sseObservations,
+  assert.deepEqual(report.observations.filter(({ kind, server }) => kind === 'mcp-sse' && !invalidSseServers.includes(server)), sseObservations,
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
+    if (['mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
+      'mcp.sse.headers.duplicate-names', 'mcp.sse.headers.invalid-name', 'mcp.sse.headers.invalid-value'].includes(result.id)) {
+      assert.equal(result.status, ['request', 'sse-session'].includes(baselineSse?.type) ? 'pass' : 'not_verified');
+      continue;
+    }
     if (['mcp.sse.headers.cross-origin-redirect', 'mcp.sse.headers.cross-origin-endpoint'].includes(result.id)) {
       const evidence = sseObservations.find(({ server }) => server === (result.id.endsWith('redirect') ? 'sse-redirect' : 'sse-endpoint-origin')).evidence;
       if (evidence?.type !== 'sse-session') assert.equal(result.status, 'not_verified');
