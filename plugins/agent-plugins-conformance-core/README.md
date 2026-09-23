@@ -8,7 +8,7 @@ Node.js 22 or newer must be available as `node` on the client's executable searc
 
 ## Optional HTTP setup
 
-To include the Streamable HTTP checks, start the bundled server in a separate terminal **before the client loads the plugin**:
+To include checks for MCP servers using Streamable HTTP or legacy HTTP+SSE, start the bundled server in a separate terminal **before the client loads the plugin**:
 
 ```sh
 node '/absolute/path/to/agent-plugins-conformance-core/dist/serve-http.mjs'
@@ -33,6 +33,11 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |
 | `mcp.streamable-http.tool-availability` | The client exposes the HTTP tool and it returns a valid observation despite a conflicting, mixed-case configured `Accept` header. A completed discovery or call attempt with no observation fails this check only when the reporter confirms that the local fixture is healthy. |
-| `mcp.streamable-http.url.literal-route-and-query` | The tool request reaches `/conformance/mcp` with the single decoded query pair `value=$APC_HTTP_VALUE`, preserving the placeholder-like text literally. |
+| `mcp.streamable-http.url.literal-route-and-query` | The configured URL path and query are preserved literally. |
 | `mcp.streamable-http.headers.literal-value` | Configured header values preserve placeholder-like text and spaces literally. |
 | `mcp.streamable-http.headers.cross-origin-redirect` | Configured headers are not forwarded to another origin without authorization. |
+| `mcp.sse.tool-availability` | The client exposes the legacy HTTP+SSE tool and it returns a valid observation. |
+| `mcp.sse.url.literal-route-and-query` | The configured URL path and query are preserved literally. |
+| `mcp.sse.headers.literal-value` | The initial connection preserves the configured header value literally. |
+
+Legacy HTTP+SSE support is optional. Without a successful SSE observation, these checks remain `not_verified`, even when the helper is running.

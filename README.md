@@ -11,11 +11,11 @@ The suite includes these plugins:
 | Plugin directory | Purpose |
 | --- | --- |
 | [`plugins/agent-plugins-conformance`](plugins/agent-plugins-conformance/) | The `run-conformance` skill and JSON reporting tools |
-| [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery, stdio MCP behavior, and optional Streamable HTTP checks |
+| [`plugins/agent-plugins-conformance-core`](plugins/agent-plugins-conformance-core/) | Fixtures for skill discovery, stdio MCP behavior, and optional Streamable HTTP and legacy HTTP+SSE checks |
 | [`plugins/agent-plugins-conformance-recovery`](plugins/agent-plugins-conformance-recovery/) | Fixtures for handling invalid configuration |
 | [`plugins/agent-plugins-conformance-invalid-mcp`](plugins/agent-plugins-conformance-invalid-mcp/) | A valid skill alongside a malformed MCP document |
 
-To include the optional Streamable HTTP checks, follow the [Core fixture's HTTP setup](plugins/agent-plugins-conformance-core/#optional-http-setup) **before the client loads the plugins**. This starts a bundled local server in a separate terminal; CI can launch the same command. Without the server, HTTP checks remain `not_verified` and the agent continues collecting the other checks.
+To include the optional Streamable HTTP and legacy HTTP+SSE checks, follow the [Core fixture's HTTP setup](plugins/agent-plugins-conformance-core/#optional-http-setup) **before the client loads the plugins**. This starts a bundled local server in a separate terminal; CI can launch the same command. Without the server, HTTP checks remain `not_verified` and the agent continues collecting the other checks.
 
 Install and load the plugins through the client's Agent Plugins support, then ask the agent:
 

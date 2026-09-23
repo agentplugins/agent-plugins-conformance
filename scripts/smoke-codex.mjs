@@ -19,7 +19,7 @@ const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'a
 const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
-  id !== 'mcp.streamable-http.headers.cross-origin-redirect');
+  id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
@@ -223,7 +223,33 @@ try {
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     record({ action: 'record', observation });
   }
+  // SSE is optional. Preserve the native diagnostic even when the loader omits the entry.
+  const sse = status.data.find(({ name }) => name === 'sse');
+  let sseObservation;
+  if (sse && Object.hasOwn(sse.tools, 'observe')) {
+    const result = await rpc('mcpServer/tool/call', {
+      threadId: thread.id, server: 'sse', tool: 'observe', arguments: {},
+    });
+    assert.ok(!result.isError && !result.error, `sse: observe failed: ${JSON.stringify(result)}`);
+    sseObservation = result.structuredContent;
+    assert.equal(sseObservation?.kind, 'mcp-sse', 'sse: missing observation');
+    assert.equal(sseObservation.server, 'sse', 'sse: unexpected observation server');
+  } else {
+    const diagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
+      .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+    const diagnostic = diagnostics.find((entry) => entry.fields?.server === 'sse' &&
+      entry.fields?.message === 'failed to parse plugin MCP server')?.fields?.error;
+    sseObservation = { kind: 'mcp-sse', server: 'sse', evidence: diagnostic
+      ? { type: 'error', message: diagnostic, classification: null } : null };
+  }
+  record({ action: 'record', observation: sseObservation });
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.deepEqual(report.observations.find(({ kind }) => kind === 'mcp-sse'), sseObservation,
+    'SSE observation or native diagnostic was not preserved');
+  for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
+    assert.equal(result.status, sseObservation.evidence?.type === 'request' ? 'pass' : 'not_verified',
+      `${result.id}: unexpected optional SSE outcome`);
+  }
   assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,
     'passed', 'HTTP fixture health check did not pass');
   assert.equal(report.summary.fail, 0, `Report contains failed cases: ${JSON.stringify(report.summary)}`);

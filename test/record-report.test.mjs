@@ -168,6 +168,41 @@ test('unrelated records preserve saved HTTP evidence and health without another 
   }
 });
 
+test('SSE records preserve diagnostics and replace runtime evidence without HTTP health requests', async (t) => {
+  const f = await fixture(t);
+  const health = await mockHealth(f);
+  f.success(start);
+  const control = http();
+  assert.equal(health.run({ action: 'record', observation: control }).status, 0);
+  const diagnostic = 'Agent Plugins legacy SSE transport is not supported\n  exact detail\t';
+  const runtime = { ...http().evidence, pathname: '/conformance/sse', query: [['value', '$APC_SSE_VALUE']] };
+  for (const evidence of [
+    { type: 'error', message: diagnostic, classification: null }, runtime, null,
+    { type: 'error', message: diagnostic, classification: null },
+  ]) {
+    const observation = { kind: 'mcp-sse', server: 'sse', evidence };
+    const result = health.run({ action: 'record', observation });
+    assert.equal(result.status, 0, result.stderr);
+    const report = await f.read();
+    assert.deepEqual(report, expected([{ ...control, serverHealthCheck: 'passed' }, observation]));
+    assert.ok(report.results.filter(({ id }) => id.startsWith('mcp.sse.'))
+      .every(({ status }) => status === (evidence?.type === 'request' ? 'pass' : 'not_verified')));
+    assert.equal(await health.calls(), 1);
+  }
+  const summary = spawnSync(process.execPath, [fileURLToPath(new URL(
+    '../plugins/agent-plugins-conformance/skills/run-conformance/scripts/summarize.mjs', import.meta.url)), f.outputPath],
+  { encoding: 'utf8' });
+  assert.equal(summary.status, 0, summary.stderr);
+  assert.equal(summary.stdout.trimEnd(), formatReport(await f.read()));
+  const before = await readFile(f.outputPath, 'utf8');
+  const rejected = health.run({ action: 'record', observation: {
+    kind: 'mcp-sse', server: 'sse', evidence: runtime, serverHealthCheck: 'passed',
+  } });
+  assert.equal(rejected.status, 2);
+  assert.equal(await readFile(f.outputPath, 'utf8'), before);
+  assert.equal(await health.calls(), 1);
+});
+
 test('redirect records receive fresh health and replace independently with exact error text', async (t) => {
   const f = await fixture(t);
   const health = await mockHealth(f);
