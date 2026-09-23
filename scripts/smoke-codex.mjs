@@ -197,7 +197,7 @@ try {
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
-  for (const server of ['recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
+  for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
     'recovery-http-header-name', 'recovery-http-header-value']) {

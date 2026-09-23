@@ -38,6 +38,7 @@ const invalidServerDiscovery = (server = 'recovery-cwd-escape', advertised = fal
   kind: 'mcp-discovery', server, advertised,
 });
 const invalidServerCases = [
+  ['recovery-cwd-invalid-form', 'mcp.stdio.cwd.invalid-form'],
   ['recovery-cwd-escape', 'mcp.stdio.cwd.plugin-relative-escape'],
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
   ['recovery-cwd-symlink-escape', 'filesystem.containment.cwd-symlink-escape'],

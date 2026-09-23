@@ -11,6 +11,7 @@ export const CASES = Object.freeze([
     [`mcp.stdio.tool-availability.cwd-${variant}`, `${server} MCP tool evidence`, ['6.1', '7.2.1']],
     [`mcp.stdio.cwd.${variant}`, `${server} working directory`, ['7.2.1']],
   ]),
+  ['mcp.stdio.cwd.invalid-form', 'Invalid cwd form exclusion', ['7.2.1', '7.2.2']],
   ['mcp.stdio.cwd.plugin-relative-escape', 'Plugin-relative cwd escape exclusion', ['4.1', '7.2.1', '7.2.2']],
   ['mcp.stdio.cwd.plugin-data-escape', 'Plugin-data cwd escape exclusion', ['7.2.1', '7.2.2']],
   ['filesystem.containment.cwd-symlink-escape', 'Working-directory symlink containment', ['4.1', '7.2.1', '7.2.2']],

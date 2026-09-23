@@ -8,6 +8,7 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | --- | --- |
 | `skills.recovery.valid-skill-available` | The valid `conformance-recovery-valid` skill remains available under the combined configuration. |
 | `mcp.stdio.recovery.valid-server-available` | The valid `recovery-valid` stdio MCP server remains available under the combined configuration. |
+| `mcp.stdio.cwd.invalid-form` | A server whose working directory uses an invalid path form is excluded. |
 | `mcp.stdio.cwd.plugin-relative-escape` | A server whose plugin-relative working directory escapes the plugin root is excluded. |
 | `mcp.stdio.cwd.plugin-data-escape` | A server whose data-rooted working directory escapes the plugin data directory is excluded. |
 | `filesystem.containment.cwd-symlink-escape` | A server whose working directory escapes the plugin root through a symlink is excluded. |

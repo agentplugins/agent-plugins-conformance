@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { access, cp, lstat, mkdir, mkdtemp, readFile, readlink, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 20);
+  assert.equal(direct.summary.not_verified, 21);
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
@@ -228,6 +228,30 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   assert.deepEqual(symlinkEscapeObservation, expectedInvalid(symlinkServer, outsideCwd));
   assert.equal(buildReport(input([symlinkEscapeObservation])).results
     .find(({ id }) => id === symlinkCase).status, 'fail');
+
+  const invalidFormServer = 'recovery-cwd-invalid-form';
+  const configuredInvalidForm = configs[invalidFormServer];
+  assert.deepEqual(configuredInvalidForm, {
+    type: 'stdio', command: 'node',
+    args: ['${PLUGIN_ROOT}/dist/probe.mjs', invalidFormServer], cwd: '.',
+  });
+  const correctedInvalidForm = { ...structuredClone(configuredInvalidForm), cwd: './' };
+  for (const [label, config] of [
+    ['valid control', correctedInvalidForm],
+    ['permissive loader', configuredInvalidForm],
+  ]) {
+    // The reference launcher deliberately resolves either relative form. The
+    // second iteration models accepting the invalid dot form during loading.
+    const invalidForm = await connectRecovery(invalidFormServer, { cwd: resolve(root, config.cwd) });
+    await inspectInvalidTool(invalidForm, invalidFormServer);
+    const invalidFormObservation = await observe(invalidForm);
+    assert.deepEqual(invalidFormObservation, expectedInvalid(invalidFormServer, resolvedRoot), label);
+    if (label === 'permissive loader') {
+      assert.equal(buildReport(input([invalidFormObservation])).results
+        .find(({ id }) => id === 'mcp.stdio.cwd.invalid-form').status, 'fail');
+    }
+  }
+  assert.equal(configuredInvalidForm.cwd, '.');
 
   const unknownField = await connectRecovery('recovery-unknown-field');
   await inspectInvalidTool(unknownField, 'recovery-unknown-field');

@@ -80,6 +80,10 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'stdio', command: 'node',
     args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-symlink-escape'], cwd: './escape-link',
   });
+  assert.deepEqual(mcp.mcpServers['recovery-cwd-invalid-form'], {
+    type: 'stdio', command: 'node',
+    args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-invalid-form'], cwd: '.',
+  });
   assert.deepEqual(mcp.mcpServers['recovery-unknown-field'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-unknown-field'],
     conformanceUnknown: true,
@@ -131,7 +135,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.equal(relative(dataRoot, resolve(dataEscape)), '..');
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) =>
-    ['/mcpServers/recovery-invalid', '/mcpServers/recovery-unknown-field',
+    ['/mcpServers/recovery-invalid', '/mcpServers/recovery-cwd-invalid-form', '/mcpServers/recovery-unknown-field',
       '/mcpServers/recovery-env-plugin-root', '/mcpServers/recovery-env-plugin-data']
       .some((prefix) => instancePath.startsWith(prefix))),
     JSON.stringify(validateMcp.errors));
@@ -161,6 +165,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   delete schemaValidMcp.mcpServers['recovery-unknown-field'].conformanceUnknown;
   delete schemaValidMcp.mcpServers['recovery-env-plugin-root'].env.PLUGIN_ROOT;
   delete schemaValidMcp.mcpServers['recovery-env-plugin-data'].env.PLUGIN_DATA;
+  schemaValidMcp.mcpServers['recovery-cwd-invalid-form'].cwd = './';
   assert.equal(validateMcp(schemaValidMcp), true, JSON.stringify(validateMcp.errors));
 });
 
