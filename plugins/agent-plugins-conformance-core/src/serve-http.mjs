@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { requestEvidence } from './http-request.mjs';
 import { handleRedirect } from './redirect.mjs';
+import { handleSse, closeSseSessions } from './sse.mjs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -18,10 +19,10 @@ const recoveryRoutes = new Map([
   ['/conformance/recovery-http-duplicate-headers', 'recovery-http-duplicate-headers'],
 ]);
 
-// No session or observation state is shared between requests or client runs.
 const listener = createServer(async (request, response) => {
   const separator = request.url.indexOf('?');
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
+  if (await handleSse(request, response, requestPathname)) return;
   if (requestPathname === '/conformance/redirect') {
     await handleRedirect(request, response, 'source');
     return;
@@ -88,6 +89,7 @@ const listeners = [
 let readyCount = 0;
 let startupFailed = false;
 function closeListeners() {
+  closeSseSessions();
   for (const { server } of listeners) {
     server.close();
     server.closeAllConnections();

@@ -25,6 +25,7 @@ const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
 const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
+const SSE_SERVERS = ['sse'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -124,10 +125,11 @@ export function validateInput(input, { recording = false } = {}) {
   let nestedDiscovery;
   const invalidServerDiscovery = new Map();
   const http = new Map();
+  const sse = new Map();
   for (const [index, observation] of input.observations.entries()) {
     const at = `input.observations[${index}]`;
     object(observation, ['kind', 'server', 'evidence', 'skill', 'marker', 'serverHealthCheck', 'advertised'], ['kind'], at);
-    member(observation.kind, ['mcp-stdio', 'mcp-streamable-http', 'mcp-discovery', 'skill', 'skill-discovery'], `${at}.kind`);
+    member(observation.kind, ['mcp-stdio', 'mcp-streamable-http', 'mcp-sse', 'mcp-discovery', 'skill', 'skill-discovery'], `${at}.kind`);
     if (observation.kind === 'mcp-streamable-http') {
       const fields = ['kind', 'server', 'evidence', ...(recording ? [] : ['serverHealthCheck'])];
       object(observation, fields, fields, at);
@@ -136,6 +138,17 @@ export function validateInput(input, { recording = false } = {}) {
       if (http.has(observation.server)) invalid(at, `duplicate mcp-streamable-http observation: ${observation.server}`);
       http.set(observation.server, observation);
       if (observation.evidence !== null) validateHttpEvidence(observation.evidence, `${at}.evidence`);
+    } else if (observation.kind === 'mcp-sse') {
+      object(observation, ['kind', 'server', 'evidence'], ['kind', 'server', 'evidence'], at);
+      member(observation.server, SSE_SERVERS, `${at}.server`);
+      if (sse.has(observation.server)) invalid(at, `duplicate mcp-sse observation: ${observation.server}`);
+      sse.set(observation.server, observation);
+      if (observation.evidence !== null) {
+        validateHttpEvidence(observation.evidence, `${at}.evidence`);
+        if (observation.evidence.type === 'error' && observation.evidence.classification !== null) {
+          invalid(`${at}.evidence.classification`, 'expected null');
+        }
+      }
     } else if (observation.kind === 'mcp-stdio') {
       object(observation, ['kind', 'server', 'evidence'], ['kind', 'server', 'evidence'], at);
       member(observation.server, SERVERS, `${at}.server`);
@@ -214,11 +227,11 @@ export function validateInput(input, { recording = false } = {}) {
       skills.set(observation.skill, observation.marker);
     }
   }
-  return { runtime, skills, http, nestedDiscovery, invalidServerDiscovery };
+  return { runtime, skills, http, sse, nestedDiscovery, invalidServerDiscovery };
 }
 
 export function buildReport(input) {
-  const { runtime, skills, http, nestedDiscovery, invalidServerDiscovery } = validateInput(input);
+  const { runtime, skills, http, sse, nestedDiscovery, invalidServerDiscovery } = validateInput(input);
   const results = new Map(CASES.map(({ id }) => [id, { id, status: 'not_verified', detail: 'No observation supplied.' }]));
   const set = (id, status, detail) => results.set(id, { id, status, detail });
   const check = (id, condition, pass, fail) => set(id, condition ? 'pass' : 'fail', condition ? pass : fail);
@@ -252,6 +265,33 @@ export function buildReport(input) {
         : healthPassed
           ? 'The native attempt yielded no observation while the HTTP server health check passed.'
           : 'The native attempt yielded no observation and the HTTP server health check failed.');
+  }
+
+  const sseObservation = sse.get('sse');
+  const sseCaseIds = [
+    'mcp.sse.tool-availability',
+    'mcp.sse.url.literal-route-and-query',
+    'mcp.sse.headers.literal-value',
+  ];
+  if (sseObservation?.evidence?.type === 'request') {
+    const evidence = sseObservation.evidence;
+    set('mcp.sse.tool-availability', 'pass', 'Valid runtime evidence supplied for the SSE server.');
+    const expectedPathname = '/conformance/sse';
+    const expectedQuery = [['value', '$APC_SSE_VALUE']];
+    const differences = [];
+    if (evidence.pathname !== expectedPathname) differences.push(mismatch('URL pathname', expectedPathname, evidence.pathname));
+    if (JSON.stringify(evidence.query) !== JSON.stringify(expectedQuery)) differences.push(mismatch('URL query pairs', expectedQuery, evidence.query));
+    check('mcp.sse.url.literal-route-and-query', differences.length === 0,
+      'URL pathname and decoded query pairs preserve the configured literal values.', differences.join(' '));
+    const expectedHeader = '${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces';
+    check('mcp.sse.headers.literal-value', evidence.headers['x-apc-fixture'] === expectedHeader,
+      'The initial connection preserves the configured header value literally.',
+      mismatch('Initial x-apc-fixture header', expectedHeader, evidence.headers['x-apc-fixture']));
+  } else if (sseObservation) {
+    const detail = sseObservation.evidence?.type === 'error'
+      ? 'The native SSE attempt returned an error; the exact diagnostic is preserved in the observation.'
+      : 'The completed native SSE attempt supplied no usable evidence.';
+    for (const id of sseCaseIds) set(id, 'not_verified', detail);
   }
 
   const redirect = http.get('http-redirect');
@@ -483,13 +523,25 @@ export function buildReport(input) {
             };
         return { kind: 'mcp-streamable-http', server, evidence, serverHealthCheck: observation.serverHealthCheck };
       }),
+      ...SSE_SERVERS.filter((server) => sse.has(server)).map((server) => {
+        const observation = sse.get(server);
+        const evidence = observation.evidence === null ? null : observation.evidence.type === 'error'
+          ? { type: 'error', message: observation.evidence.message, classification: null }
+          : {
+              type: 'request', version: observation.evidence.version, pathname: observation.evidence.pathname,
+              query: observation.evidence.query.map((pair) => [...pair]),
+              headers: { 'x-apc-fixture': observation.evidence.headers['x-apc-fixture'] },
+            };
+        return { kind: 'mcp-sse', server, evidence };
+      }),
     ],
     results: ordered,
     summary,
     notes: [
       'Results describe submitted observations; they do not authenticate their source.',
       'HTTP error classifications are the agent’s interpretation of the preserved native diagnostic.',
-      'Null HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
+      'Null Streamable HTTP evidence describes a completed unsuccessful native attempt reported by the agent; server health is checked by the reporter.',
+      'SSE support is optional; missing, null, or error evidence does not establish nonconformance.',
       'Skill markers and skill or MCP discovery observations are agent assertions about client-loaded components and advertised availability, not independent proof.',
       'Directory comparisons use normalized absolute paths under the producing operating system path rules and data paths resolved by the probes; the reporter performs no filesystem lookup.',
     ],

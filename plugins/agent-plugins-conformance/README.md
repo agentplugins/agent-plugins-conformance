@@ -7,7 +7,7 @@ Results describe the observed run and covered cases; they are not whole-client c
 ## Run through a client
 
 1. Make Node.js 22 or newer available as `node` on the client's executable search path. The agent must also be able to execute commands. The packaged plugins require no dependency installation or build.
-2. For the optional Streamable HTTP checks, start the [Core fixture's bundled HTTP server](../agent-plugins-conformance-core/#optional-http-setup) in a separate terminal before the client loads the plugins. Leave it running during collection. Without it, HTTP checks remain `not_verified`; the agent continues collecting the other checks.
+2. For the optional Streamable HTTP and legacy HTTP+SSE checks, start the [Core fixture's bundled HTTP server](../agent-plugins-conformance-core/#optional-http-setup) in a separate terminal before the client loads the plugins. Leave it running during collection. Without it, HTTP checks remain `not_verified`; the agent continues collecting the other checks.
 3. Install and load the plugins listed in the [suite’s installation table](../../README.md#run-the-checks) through the client's Agent Plugins support.
 4. Ask the agent to run `run-conformance` and save the JSON report to an absolute path:
 
@@ -75,7 +75,7 @@ An unsuccessful attempt on Core's `http` server fails the availability check onl
 
 ### Choose required checks
 
-Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills, `filesystem.*` covers package-path containment and plugin data storage, `mcp.stdio.*` covers stdio MCP behavior, and `mcp.streamable-http.*` covers the optional HTTP fixture. Prefix queries include future checks added within the selected scope.
+Consumers choose which results to require. IDs form a hierarchy: `skills.*` covers skills, `filesystem.*` covers package-path containment and plugin data storage, `mcp.stdio.*` covers stdio MCP behavior, `mcp.streamable-http.*` covers Streamable HTTP, and `mcp.sse.*` covers legacy HTTP+SSE. Prefix queries include future checks added within the selected scope.
 
 For example, require all stdio MCP checks to pass:
 

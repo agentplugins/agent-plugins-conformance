@@ -56,6 +56,13 @@
       ],
       "cwd": "${PLUGIN_DATA}"
     },
+    "sse": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse?value=$APC_SSE_VALUE",
+      "headers": {
+        "x-apc-fixture": "${PLUGIN_ROOT}|${PLUGIN_DATA}|fixture value with spaces"
+      }
+    },
     "http-redirect": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/redirect",
