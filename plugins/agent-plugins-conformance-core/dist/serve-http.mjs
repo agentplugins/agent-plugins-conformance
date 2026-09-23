@@ -24148,6 +24148,12 @@ var redirectAttemptLifetime = 3e4;
 var sessions = /* @__PURE__ */ new Map();
 var redirectAttempts = /* @__PURE__ */ new Map();
 var fixtures = /* @__PURE__ */ new Map([
+  [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
+    server: "sse-endpoint-origin",
+    expectedHeader: "public SSE endpoint fixture value",
+    messageOrigin: destinationOrigin,
+    messagePath: "/conformance/sse-endpoint-origin/messages"
+  }],
   [`${sourceOrigin}/conformance/sse`, {
     server: "sse",
     expectedHeader: null,
@@ -24295,7 +24301,7 @@ async function openRedirectDestination(request, response) {
   );
 }
 async function handleSse(request, response, pathname2, listenerOrigin) {
-  const isMessagePath = pathname2 === "/conformance/sse/messages" || pathname2 === "/conformance/sse-redirect/messages";
+  const isMessagePath = pathname2 === "/conformance/sse-endpoint-origin/messages" || pathname2 === "/conformance/sse/messages" || pathname2 === "/conformance/sse-redirect/messages";
   if (isMessagePath) {
     if (request.method !== "POST") {
       response.writeHead(405, { Allow: "POST" }).end();

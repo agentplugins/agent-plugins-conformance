@@ -13,6 +13,10 @@ const sessions = new Map();
 const redirectAttempts = new Map();
 
 const fixtures = new Map([
+  [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
+    server: 'sse-endpoint-origin', expectedHeader: 'public SSE endpoint fixture value',
+    messageOrigin: destinationOrigin, messagePath: '/conformance/sse-endpoint-origin/messages',
+  }],
   [`${sourceOrigin}/conformance/sse`, {
     server: 'sse', expectedHeader: null,
     messageOrigin: sourceOrigin, messagePath: '/conformance/sse/messages',
@@ -163,7 +167,8 @@ async function openRedirectDestination(request, response) {
 }
 
 export async function handleSse(request, response, pathname, listenerOrigin) {
-  const isMessagePath = pathname === '/conformance/sse/messages' ||
+  const isMessagePath = pathname === '/conformance/sse-endpoint-origin/messages' ||
+    pathname === '/conformance/sse/messages' ||
     pathname === '/conformance/sse-redirect/messages';
   if (isMessagePath) {
     if (request.method !== 'POST') {

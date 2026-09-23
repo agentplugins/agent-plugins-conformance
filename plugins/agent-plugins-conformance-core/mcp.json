@@ -83,6 +83,13 @@
       "headers": {
         "x-apc-fixture": "public SSE redirect fixture value"
       }
+    },
+    "sse-endpoint-origin": {
+      "type": "sse",
+      "url": "http://127.0.0.1:43187/conformance/sse-endpoint-origin",
+      "headers": {
+        "x-apc-fixture": "public SSE endpoint fixture value"
+      }
     }
   }
 }

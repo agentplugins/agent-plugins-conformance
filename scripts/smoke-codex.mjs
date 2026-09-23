@@ -225,7 +225,7 @@ try {
   }
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
   const sseObservations = [];
-  for (const server of ['sse', 'sse-header-precedence', 'sse-redirect']) {
+  for (const server of ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin']) {
     const entry = status.data.find(({ name }) => name === server);
     let observation;
     if (entry && Object.hasOwn(entry.tools, 'observe')) {
@@ -252,8 +252,8 @@ try {
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    if (result.id === 'mcp.sse.headers.cross-origin-redirect') {
-      const evidence = sseObservations.find(({ server }) => server === 'sse-redirect').evidence;
+    if (['mcp.sse.headers.cross-origin-redirect', 'mcp.sse.headers.cross-origin-endpoint'].includes(result.id)) {
+      const evidence = sseObservations.find(({ server }) => server === (result.id.endsWith('redirect') ? 'sse-redirect' : 'sse-endpoint-origin')).evidence;
       if (evidence?.type !== 'sse-session') assert.equal(result.status, 'not_verified');
       continue;
     }

@@ -25,7 +25,7 @@ const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS)];
 const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
-const SSE_SERVERS = ['sse', 'sse-header-precedence', 'sse-redirect'];
+const SSE_SERVERS = ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin'];
 const CORE_SKILLS = {
   'conformance-alpha': 'APC_ALPHA_V1',
   'conformance-beta': 'APC_BETA_V1',
@@ -95,7 +95,8 @@ function validateSseConnection(connection, at) {
   nullableString(connection.headers.accept, `${at}.headers.accept`);
 }
 
-function validateHttpEvidence(evidence, at, allowedTypes = ['request', 'error']) {
+function validateHttpEvidence(evidence, at, allowedTypes = ['request', 'error'],
+  allowedClassifications = [null, 'redirect-refused']) {
   object(evidence, [
     'type', 'version', 'pathname', 'query', 'headers', 'message', 'classification',
     'connection', 'redirectSource', 'messages',
@@ -104,8 +105,8 @@ function validateHttpEvidence(evidence, at, allowedTypes = ['request', 'error'])
   if (evidence.type === 'error') {
     object(evidence, ['type', 'message', 'classification'], ['type', 'message', 'classification'], at);
     string(evidence.message, `${at}.message`);
-    if (evidence.classification !== null && evidence.classification !== 'redirect-refused') {
-      invalid(`${at}.classification`, 'expected redirect-refused or null');
+    if (!allowedClassifications.includes(evidence.classification)) {
+      invalid(`${at}.classification`, `expected one of: ${allowedClassifications.map((value) => value ?? 'null').join(', ')}`);
     }
     return;
   }
@@ -206,12 +207,15 @@ export function validateInput(input, { recording = false } = {}) {
       if (sse.has(observation.server)) invalid(at, `duplicate mcp-sse observation: ${observation.server}`);
       sse.set(observation.server, observation);
       if (observation.evidence !== null) {
-        validateHttpEvidence(observation.evidence, `${at}.evidence`, ['request', 'error', 'sse-session']);
+        validateHttpEvidence(observation.evidence, `${at}.evidence`, ['request', 'error', 'sse-session'],
+          [null, 'redirect-refused', 'endpoint-refused']);
         if (observation.evidence.type === 'error') {
-          const classifications = observation.server === 'sse-redirect' ? [null, 'redirect-refused'] : [null];
+          const classifications = observation.server === 'sse-redirect' ? [null, 'redirect-refused']
+            : observation.server === 'sse-endpoint-origin' ? [null, 'endpoint-refused'] : [null];
           if (!classifications.includes(observation.evidence.classification)) {
             invalid(`${at}.evidence.classification`, observation.server === 'sse-redirect'
-              ? 'expected redirect-refused or null' : 'expected null');
+              ? 'expected redirect-refused or null'
+              : observation.server === 'sse-endpoint-origin' ? 'expected endpoint-refused or null' : 'expected null');
           }
         }
       }
@@ -458,6 +462,40 @@ export function buildReport(input) {
     }
   } else if (sseRedirectObservation) {
     set(sseRedirectId, 'not_verified', 'The completed native SSE redirect attempt supplied no usable session evidence.');
+  }
+
+  const sseEndpointId = 'mcp.sse.headers.cross-origin-endpoint';
+  const sseEndpointObservation = sse.get('sse-endpoint-origin');
+  const sseEndpointEvidence = sseEndpointObservation?.evidence;
+  if (sseEndpointEvidence?.type === 'error') {
+    set(sseEndpointId, sseEndpointEvidence.classification === 'endpoint-refused' ? 'pass' : 'not_verified',
+      sseEndpointEvidence.classification === 'endpoint-refused'
+        ? 'Agent reported an unambiguous native refusal to use the cross-origin SSE message endpoint; the exact error is preserved in the observation.'
+        : 'The native cross-origin SSE endpoint attempt returned an error that does not establish endpoint refusal; the exact error is preserved in the observation.');
+  } else if (sseEndpointEvidence?.type === 'sse-session') {
+    const connection = sseEndpointEvidence.connection;
+    const pathname = '/conformance/sse-endpoint-origin';
+    const connectionOrigin = 'http://127.0.0.1:43187';
+    const endpointOrigin = 'http://127.0.0.1:43189';
+    const connectionHeader = 'public SSE endpoint fixture value';
+    if (sseEndpointEvidence.redirectSource !== null || connection.origin !== connectionOrigin ||
+        connection.pathname !== pathname || connection.headers['x-apc-fixture'] !== connectionHeader) {
+      set(sseEndpointId, 'not_verified',
+        'The SSE session did not supply the expected direct connection route evidence.');
+    } else if (sseEndpointEvidence.messages.some((message) =>
+      message.origin === endpointOrigin && message.headers['x-apc-fixture'] !== null)) {
+      set(sseEndpointId, 'fail',
+        'A cross-origin SSE endpoint message received the configured connection header without endpoint authorization.');
+    } else if (sseEndpointEvidence.messages.length === 0) {
+      set(sseEndpointId, 'not_verified', 'No cross-origin SSE endpoint message evidence was supplied.');
+    } else if (sseEndpointEvidence.messages.some((message) => message.origin !== endpointOrigin)) {
+      set(sseEndpointId, 'not_verified',
+        'SSE message evidence included an unexpected endpoint origin, so header delivery was not evaluated.');
+    } else {
+      set(sseEndpointId, 'pass', 'No cross-origin SSE endpoint message received the configured connection header.');
+    }
+  } else if (sseEndpointObservation) {
+    set(sseEndpointId, 'not_verified', 'The completed native cross-origin SSE endpoint attempt supplied no usable session evidence.');
   }
 
   const missingSkills = Object.keys(CORE_SKILLS).filter((skill) => !skills.has(skill));

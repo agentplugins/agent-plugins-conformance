@@ -18,6 +18,7 @@ const sseEndpoint = `${origin}/conformance/sse`;
 const sourceOrigin = origin;
 const destinationOrigin = 'http://127.0.0.1:43189';
 const redirectHeader = 'public SSE redirect fixture value';
+const endpointHeader = 'public SSE endpoint fixture value';
 
 async function within(promise, milliseconds, message) {
   let timer;
@@ -397,6 +398,65 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
       const report = buildReport({ schemaVersion: 1, observations: [baselineObservation, observation] });
       assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.generated-precedence').status,
         faulty ? 'fail' : 'pass');
+    }
+  });
+
+  await t.test('SDK refuses an absolute cross-origin endpoint before sending initialize', async (t) => {
+    const requests = [];
+    const client = new Client({ name: 'sdk-origin-refusal', version: '1' });
+    t.after(() => client.close());
+    const transport = new SSEClientTransport(
+      new URL(`${sourceOrigin}/conformance/sse-endpoint-origin?value=%24APC_SSE_ENDPOINT_VALUE`),
+      {
+        requestInit: { headers: { 'x-apc-fixture': endpointHeader } },
+        fetch: async (input, init) => {
+          requests.push({ method: init?.method ?? 'GET', url: String(input) });
+          return fetch(input, init);
+        },
+      },
+    );
+    let diagnostic;
+    await assert.rejects(client.connect(transport), (error) => {
+      diagnostic = error.message;
+      assert.equal(diagnostic, `Endpoint origin does not match connection origin: ${destinationOrigin}`);
+      return true;
+    });
+    const observation = { kind: 'mcp-sse', server: 'sse-endpoint-origin', evidence: {
+      type: 'error', message: diagnostic, classification: 'endpoint-refused',
+    } };
+    const report = buildReport({ schemaVersion: 1, observations: [observation] });
+    assert.deepEqual(report.observations, [observation]);
+    assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.cross-origin-endpoint').status, 'pass');
+    assert.deepEqual(requests, [{
+      method: 'GET',
+      url: `${sourceOrigin}/conformance/sse-endpoint-origin?value=%24APC_SSE_ENDPOINT_VALUE`,
+    }]);
+  });
+
+  await t.test('permissive endpoint controls retain every stripped or leaked POST independently', async (t) => {
+    const open = () => openStream(
+      `${sourceOrigin}/conformance/sse-endpoint-origin?value=%24APC_SSE_ENDPOINT_VALUE`,
+      { 'x-apc-fixture': endpointHeader },
+    );
+    const [stripped, leaked, earlyLeak] = await Promise.all([
+      open().then((stream) => runProtocol(t, stream, [null])),
+      open().then((stream) => runProtocol(t, stream, [endpointHeader])),
+      open().then((stream) => runProtocol(t, stream, [endpointHeader, null, null, null])),
+    ]);
+    for (const evidence of [stripped, leaked, earlyLeak].map(({ evidence }) => evidence)) {
+      assert.equal(evidence.type, 'sse-session');
+      assert.equal(evidence.connection.origin, sourceOrigin);
+      assert.equal(evidence.redirectSource, null);
+      assert.equal(evidence.messages.length, 4);
+      assert.ok(evidence.messages.every(({ origin }) => origin === destinationOrigin));
+    }
+    assert.ok(stripped.evidence.messages.every(({ headers }) => headers['x-apc-fixture'] === null));
+    assert.ok(leaked.evidence.messages.every(({ headers }) => headers['x-apc-fixture'] === endpointHeader));
+    assert.deepEqual(earlyLeak.evidence.messages.map(({ headers }) => headers['x-apc-fixture']),
+      [endpointHeader, null, null, null]);
+    for (const [observation, expected] of [[stripped, 'pass'], [leaked, 'fail'], [earlyLeak, 'fail']]) {
+      const report = buildReport({ schemaVersion: 1, observations: [observation] });
+      assert.equal(report.results.find(({ id }) => id === 'mcp.sse.headers.cross-origin-endpoint').status, expected);
     }
   });
 
