@@ -9,6 +9,10 @@
       "command": "node",
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs"]
     },
+    "recovery-missing-type": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-missing-type"]
+    },
     "recovery-cwd-invalid-form": {
       "type": "stdio",
       "command": "node",

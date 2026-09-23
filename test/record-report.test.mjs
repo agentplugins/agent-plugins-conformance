@@ -43,6 +43,7 @@ const invalidServerCases = [
   ['recovery-cwd-data-escape', 'mcp.stdio.cwd.plugin-data-escape'],
   ['recovery-cwd-symlink-escape', 'filesystem.containment.cwd-symlink-escape'],
   ['recovery-unknown-field', 'mcp.stdio.config.unknown-field'],
+  ['recovery-missing-type', 'mcp.config.missing-type'],
   ['recovery-env-plugin-root', 'mcp.stdio.env.reserved-plugin-root'],
   ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
 ];

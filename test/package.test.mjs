@@ -69,6 +69,21 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.deepEqual(mcp.mcpServers['recovery-valid'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs'],
   });
+  const missingType = mcp.mcpServers['recovery-missing-type'];
+  assert.deepEqual(missingType, {
+    command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-missing-type'],
+  });
+  assert.equal(Object.hasOwn(missingType, 'type'), false);
+  const validateStdio = ajv.getSchema(`${mcpSchema.$id}#/$defs/stdioServer`);
+  assert.equal(validateStdio(missingType), false);
+  assert.deepEqual(validateStdio.errors.map(({ keyword, params }) => ({ keyword, params })), [
+    { keyword: 'required', params: { missingProperty: 'type' } },
+  ]);
+  const correctedMissingType = { ...structuredClone(missingType), type: 'stdio' };
+  const { type: correctedType, ...unchangedMissingType } = correctedMissingType;
+  assert.equal(correctedType, 'stdio');
+  assert.deepEqual(unchangedMissingType, missingType);
+  assert.equal(validateStdio(correctedMissingType), true, JSON.stringify(validateStdio.errors));
   assert.deepEqual(mcp.mcpServers['recovery-cwd-escape'], {
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-cwd-escape'], cwd: './..',
   });
@@ -140,6 +155,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   assert.equal(validateMcp(mcp), false);
   assert.ok(validateMcp.errors.every(({ instancePath }) =>
     ['/mcpServers/recovery-invalid', '/mcpServers/recovery-cwd-invalid-form', '/mcpServers/recovery-unknown-field',
+      '/mcpServers/recovery-missing-type',
       '/mcpServers/recovery-http-relative-url',
       '/mcpServers/recovery-env-plugin-root', '/mcpServers/recovery-env-plugin-data']
       .some((prefix) => instancePath.startsWith(prefix))),
@@ -170,6 +186,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   delete schemaValidMcp.mcpServers['recovery-unknown-field'].conformanceUnknown;
   delete schemaValidMcp.mcpServers['recovery-env-plugin-root'].env.PLUGIN_ROOT;
   delete schemaValidMcp.mcpServers['recovery-env-plugin-data'].env.PLUGIN_DATA;
+  schemaValidMcp.mcpServers['recovery-missing-type'] = correctedMissingType;
   schemaValidMcp.mcpServers['recovery-cwd-invalid-form'].cwd = './';
   schemaValidMcp.mcpServers['recovery-http-relative-url'].url =
     `http:${schemaValidMcp.mcpServers['recovery-http-relative-url'].url}`;
