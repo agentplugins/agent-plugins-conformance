@@ -14,6 +14,7 @@ const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-env-plugin-data': 'mcp.stdio.env.reserved-plugin-data',
 });
 const INVALID_HTTP_SERVERS = Object.freeze({
+  'recovery-http-type': 'mcp.config.legacy-http-type',
   'recovery-http-relative-url': 'mcp.streamable-http.url.relative',
   'recovery-http-fragment': 'mcp.streamable-http.url.fragment',
   'recovery-http-userinfo': 'mcp.streamable-http.url.userinfo',

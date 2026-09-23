@@ -12,6 +12,7 @@ const pathname = '/conformance/mcp';
 const url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 const recoveryRoutes = new Map([
   ['/conformance/recovery-http-relative-url', 'recovery-http-relative-url'],
+  ['/conformance/recovery-http-type', 'recovery-http-type'],
   ['/conformance/recovery-http-header-name', 'recovery-http-header-name'],
   ['/conformance/recovery-http-header-value', 'recovery-http-header-value'],
   ['/conformance/recovery-http-userinfo', 'recovery-http-userinfo'],
