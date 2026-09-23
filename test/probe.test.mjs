@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 22);
+  assert.equal(direct.summary.not_verified, 23);
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
@@ -121,11 +121,12 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
     try { await Promise.all(clients.map((client) => client.close())); } finally { await rm(parent, { recursive: true, force: true }); }
   });
   assert.equal((await readdir(root)).includes('node_modules'), false);
-  const configs = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8')).mcpServers;
+  const configPath = join(root, 'mcp.json');
+  const configBefore = await readFile(configPath);
+  const configs = JSON.parse(configBefore).mcpServers;
   const connectRecovery = async (serverName, {
-    cwd, pluginData, pluginRoot = root, useConfiguredCwd = false,
+    cwd, pluginData, pluginRoot = root, useConfiguredCwd = false, config = configs[serverName],
   } = {}) => {
-    const config = configs[serverName];
     const variables = { PLUGIN_ROOT: pluginRoot, ...(pluginData === undefined ? {} : { PLUGIN_DATA: pluginData }) };
     const expand = (value) => value.replaceAll('${PLUGIN_ROOT}', pluginRoot)
       .replaceAll('${PLUGIN_DATA}', pluginData ?? '${PLUGIN_DATA}');
@@ -252,6 +253,34 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
     }
   }
   assert.equal(configuredInvalidForm.cwd, '.');
+
+  const missingTypeServer = 'recovery-missing-type';
+  const configuredMissingType = configs[missingTypeServer];
+  assert.deepEqual(configuredMissingType, {
+    command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', missingTypeServer],
+  });
+  const correctedMissingType = { type: 'stdio', ...structuredClone(configuredMissingType) };
+  const { type, ...withoutType } = correctedMissingType;
+  assert.equal(type, 'stdio');
+  assert.deepEqual(withoutType, configuredMissingType);
+  const missingTypeObservations = [];
+  for (const [label, config] of [
+    ['valid control', correctedMissingType],
+    ['simulated legacy default', configuredMissingType],
+  ]) {
+    // The second iteration deliberately models a legacy loader defaulting an
+    // omitted type to stdio; it does not exercise native plugin validation.
+    const missingType = await connectRecovery(missingTypeServer, { config });
+    await inspectInvalidTool(missingType, missingTypeServer);
+    const missingTypeObservation = await observe(missingType);
+    assert.deepEqual(missingTypeObservation, expectedInvalid(missingTypeServer, resolvedRoot), label);
+    missingTypeObservations.push(missingTypeObservation);
+  }
+  assert.deepEqual(missingTypeObservations[1], missingTypeObservations[0]);
+  assert.equal(buildReport(input([missingTypeObservations[1]])).results
+    .find(({ id }) => id === 'mcp.config.missing-type').status, 'fail');
+  assert.deepEqual(configuredMissingType, withoutType);
+  assert.deepEqual(await readFile(configPath), configBefore);
 
   const unknownField = await connectRecovery('recovery-unknown-field');
   await inspectInvalidTool(unknownField, 'recovery-unknown-field');
