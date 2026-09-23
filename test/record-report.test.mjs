@@ -48,6 +48,7 @@ const invalidServerCases = [
   ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
 ];
 const invalidHttpServerCases = [
+  ['recovery-http-type', 'mcp.config.legacy-http-type'],
   ['recovery-http-relative-url', 'mcp.streamable-http.url.relative'],
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
   ['recovery-http-duplicate-headers', 'mcp.streamable-http.headers.duplicate-names'],

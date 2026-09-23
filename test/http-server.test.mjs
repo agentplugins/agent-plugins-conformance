@@ -650,6 +650,40 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     }
   });
 
+  await t.test('legacy HTTP type route has a valid control and a deliberately permissive failure witness', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const configured = mcp.mcpServers['recovery-http-type'];
+    assert.deepEqual(configured, {
+      type: 'http',
+      url: 'http://127.0.0.1:43187/conformance/recovery-http-type',
+    });
+    const normalizedForHarness = { ...configured, type: 'streamable-http' };
+    const client = new Client({ name: 'legacy-http-type-reference-test', version: '1' });
+    t.after(() => client.close());
+    await client.connect(new StreamableHTTPClientTransport(new URL(normalizedForHarness.url)));
+    assert.equal(client.getServerVersion().name, 'agent-plugins-conformance-recovery-http-type');
+    const tools = (await client.listTools()).tools;
+    assert.deepEqual(tools.map(({ name }) => name), ['observe']);
+    assert.match(tools[0].description, /server ID: recovery-http-type\./);
+    const result = await client.callTool({ name: 'observe', arguments: {} });
+    const observation = {
+      kind: 'mcp-streamable-http', server: 'recovery-http-type', serverHealthCheck: 'passed',
+      evidence: {
+        type: 'request', version: 1, pathname: '/conformance/recovery-http-type',
+        query: [], headers: { 'x-apc-fixture': null },
+      },
+    };
+    assert.equal(result.isError, undefined);
+    assert.deepEqual(result.structuredContent, {
+      kind: observation.kind, server: observation.server, evidence: observation.evidence,
+    });
+    assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+    const report = buildReport({ schemaVersion: 1, observations: [observation] });
+    assert.equal(report.results.find(({ id }) => id === 'mcp.config.legacy-http-type').status, 'fail');
+    assert.deepEqual(report.observations, [observation]);
+    assert.equal(configured.type, 'http');
+  });
+
   await t.test('userinfo route has a valid control and a deliberately permissive failure witness', async (t) => {
     const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
     const configured = mcp.mcpServers['recovery-http-userinfo'];

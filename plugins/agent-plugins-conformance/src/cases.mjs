@@ -17,6 +17,7 @@ export const CASES = Object.freeze([
   ['filesystem.containment.cwd-symlink-escape', 'Working-directory symlink containment', ['4.1', '7.2.1', '7.2.2']],
   ['mcp.stdio.config.unknown-field', 'Unknown MCP server field rejection', ['7.2.1', '7.2.2']],
   ['mcp.config.missing-type', 'Missing MCP transport type exclusion', ['7.2.1', '7.2.2']],
+  ['mcp.config.legacy-http-type', 'Legacy HTTP transport type exclusion', ['7.2.1', '7.2.2']],
   ['mcp.stdio.env.reserved-plugin-root', 'Configured PLUGIN_ROOT exclusion', ['7.2.2', '9.2']],
   ['mcp.stdio.env.reserved-plugin-data', 'Configured PLUGIN_DATA exclusion', ['7.2.2', '9.2']],
   ['mcp.stdio.env.plugin-root', 'Plugin root environment', ['9.1']],

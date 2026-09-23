@@ -59,6 +59,10 @@
       "type": "streamable-http",
       "url": "//127.0.0.1:43187/conformance/recovery-http-relative-url"
     },
+    "recovery-http-type": {
+      "type": "http",
+      "url": "http://127.0.0.1:43187/conformance/recovery-http-type"
+    },
     "recovery-http-header-name": {
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-header-name",

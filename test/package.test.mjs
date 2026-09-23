@@ -128,6 +128,24 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'streamable-http',
     url: '//127.0.0.1:43187/conformance/recovery-http-relative-url',
   });
+  const legacyHttpType = mcp.mcpServers['recovery-http-type'];
+  assert.deepEqual(legacyHttpType, {
+    type: 'http',
+    url: 'http://127.0.0.1:43187/conformance/recovery-http-type',
+  });
+  const isolatedLegacyHttpType = {
+    $schema: mcp.$schema,
+    mcpServers: { 'recovery-http-type': structuredClone(legacyHttpType) },
+  };
+  assert.equal(validateMcp(isolatedLegacyHttpType), false);
+  isolatedLegacyHttpType.mcpServers['recovery-http-type'].type = 'streamable-http';
+  const { type: correctedHttpType, ...correctedHttpRemainder } =
+    isolatedLegacyHttpType.mcpServers['recovery-http-type'];
+  const { type: legacyType, ...legacyHttpRemainder } = legacyHttpType;
+  assert.equal(legacyType, 'http');
+  assert.equal(correctedHttpType, 'streamable-http');
+  assert.deepEqual(correctedHttpRemainder, legacyHttpRemainder);
+  assert.equal(validateMcp(isolatedLegacyHttpType), true, JSON.stringify(validateMcp.errors));
   assert.deepEqual(mcp.mcpServers['recovery-http-header-name'], {
     type: 'streamable-http',
     url: 'http://127.0.0.1:43187/conformance/recovery-http-header-name',
@@ -199,6 +217,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     ['/mcpServers/recovery-invalid', '/mcpServers/recovery-cwd-invalid-form', '/mcpServers/recovery-unknown-field',
       '/mcpServers/recovery-missing-type',
       '/mcpServers/recovery-http-relative-url',
+      '/mcpServers/recovery-http-type',
       '/mcpServers/recovery-env-plugin-root', '/mcpServers/recovery-env-plugin-data']
       .some((prefix) => instancePath.startsWith(prefix))),
     JSON.stringify(validateMcp.errors));
@@ -232,6 +251,7 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
   schemaValidMcp.mcpServers['recovery-cwd-invalid-form'].cwd = './';
   schemaValidMcp.mcpServers['recovery-http-relative-url'].url =
     `http:${schemaValidMcp.mcpServers['recovery-http-relative-url'].url}`;
+  schemaValidMcp.mcpServers['recovery-http-type'].type = 'streamable-http';
   assert.equal(validateMcp(schemaValidMcp), true, JSON.stringify(validateMcp.errors));
 });
 
