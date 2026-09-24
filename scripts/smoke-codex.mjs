@@ -16,8 +16,7 @@ const [codex, ...extra] = process.argv.slice(2);
 assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
-const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
-const commandServer = `command-token-${commandPlatform}`;
+const commandServer = 'command-token';
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
   'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
@@ -164,7 +163,7 @@ try {
     }
     assert.deepEqual(actual, expected, `${name}: installed package differs from source`);
     if (name === 'agent-plugins-conformance-core' && process.platform !== 'win32') {
-      for (const file of ['bin/posix/probe token.sh', 'bin/posix/probe']) {
+      for (const file of ['bin/probe token.cmd', 'bin/probe', 'bin/probe.cmd']) {
         assert.ok((await stat(join(installedPath, file))).mode & 0o111,
           `${file}: installed wrapper is not executable`);
       }
@@ -236,7 +235,7 @@ try {
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
     if (server === commandServer) {
       assert.deepEqual(observation.evidence.argv,
-        [commandServer, `${commandPlatform}-exact`, 'intact', 'arg with spaces', '', 'literal-value'],
+        [commandServer, 'exact', 'arg with spaces', '', 'literal-value'],
         'Native launch did not preserve the command token and configured arguments');
     }
     record({ action: 'record', observation });

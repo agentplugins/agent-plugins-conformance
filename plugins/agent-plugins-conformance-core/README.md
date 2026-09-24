@@ -6,7 +6,7 @@ Install this fixture alongside [Agent Plugins Conformance](../agent-plugins-conf
 
 Node.js 22 or newer must be available as `node` on the client's executable search path. The committed MCP bundle includes the official MCP SDK and requires no dependency installation or build.
 
-The command-token check includes POSIX and Windows servers. Only the server for the current platform is expected to run; the other may produce a startup error.
+The command-token check uses one polyglot executable on POSIX and Windows.
 
 ## Optional HTTP setup
 

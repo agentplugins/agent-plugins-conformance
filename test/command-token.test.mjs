@@ -5,13 +5,16 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
 
+const verdict = (observation) => buildReport({ schemaVersion: 1, observations: [observation] }).results.find(({ id }) => id === 'mcp.stdio.command.single-token').status;
 const configuredArgs = ['arg with spaces', '', 'literal-value'];
 
 async function fixture(t) {
   const parent = await mkdtemp(join(tmpdir(), 'apc command token '));
   const root = join(await realpath(parent), 'installed plugin with spaces');
   const clients = [];
+  const diagnostics = [];
   await cp(new URL('../plugins/agent-plugins-conformance-core/', import.meta.url), root, { recursive: true });
   t.after(async () => {
     try {
@@ -23,27 +26,33 @@ async function fixture(t) {
     }
   });
   const config = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8'));
-  return { parent, root, clients, config };
+  return { parent, root, clients, config, diagnostics };
 }
 
-async function connect(files, server, { split = false } = {}) {
+async function connect(files, server, { split = false, batch = false } = {}) {
   const configured = files.config.mcpServers[server];
   let command = resolve(files.root, configured.command.slice(2));
   let args = configured.args;
   if (split) {
     if (process.platform === 'win32') {
       command = join(files.parent, 'bad command token launcher.cmd');
-      await writeFile(command, '@echo off\r\n.\\bin\\windows\\probe token.cmd %*\r\n');
+      await writeFile(command, '@echo off\r\n.\\bin\\probe token.cmd %*\r\n');
     } else {
       command = '/bin/sh';
       args = ['-c', `${configured.command} "$@"`, 'apc-command-token', ...configured.args];
     }
   }
+  if (batch) {
+    command = join(files.parent, 'ordinary batch launcher.cmd');
+    await writeFile(command, '@echo off\r\ncall ".\\bin\\probe token.cmd" %*\r\n');
+  }
   const env = Object.fromEntries(Object.entries(process.env));
   for (const name of ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL']) delete env[name];
   const client = new Client({ name: 'command-token-reference-test', version: '1' });
   files.clients.push(client);
-  await client.connect(new StdioClientTransport({ command, args, cwd: files.root, env, stderr: 'pipe' }));
+  const transport = new StdioClientTransport({ command, args, cwd: files.root, env, stderr: 'pipe' });
+  transport.stderr.on('data', (data) => files.diagnostics.push(data.toString()));
+  await client.connect(transport);
   return client;
 }
 
@@ -60,8 +69,7 @@ test('the copied Core fixture preserves the platform command token and configure
   { timeout: 30_000 }, async (t) => {
     const files = await fixture(t);
     assert.equal((await readdir(files.root)).includes('node_modules'), false);
-    const platform = process.platform === 'win32' ? 'windows' : 'posix';
-    const server = `command-token-${platform}`;
+    const server = 'command-token';
     const observation = await observe(await connect(files, server));
     assert.equal(observation.kind, 'mcp-stdio');
     assert.equal(observation.server, server);
@@ -71,27 +79,37 @@ test('the copied Core fixture preserves the platform command token and configure
     assert.equal(observation.evidence.resolvedData, null);
     assert.deepEqual(observation.evidence.env, {});
     assert.deepEqual(observation.evidence.argv,
-      [server, `${platform}-exact`, 'intact', ...configuredArgs]);
+      [server, 'exact', ...configuredArgs]);
+    assert.equal(verdict(observation), 'pass');
+    t.diagnostic(JSON.stringify({ launch: 'direct', stderr: files.diagnostics.join('') }));
   });
 
 test('deliberate unquoted platform-shell parsing reaches the split-name decoy',
   { timeout: 30_000 }, async (t) => {
     const files = await fixture(t);
-    const platform = process.platform === 'win32' ? 'windows' : 'posix';
-    const tail = process.platform === 'win32' ? 'token.cmd' : 'token.sh';
-    const server = `command-token-${platform}`;
+    const tail = 'token.cmd';
+    const server = 'command-token';
     const observation = await observe(await connect(files, server, { split: true }));
     assert.equal(observation.kind, 'mcp-stdio');
     assert.equal(observation.server, server);
     assert.deepEqual(observation.evidence.argv,
-      [server, `${platform}-decoy`, 'split', tail, ...configuredArgs]);
+      [server, 'decoy', tail, ...configuredArgs]);
+    assert.equal(verdict(observation), 'fail');
+    t.diagnostic(JSON.stringify({ launch: 'split', stderr: files.diagnostics.join('') }));
   });
 
-test('Core packages paired native wrappers with the intended executable modes',
-  { skip: process.platform === 'win32' }, async () => {
-    const root = new URL('../plugins/agent-plugins-conformance-core/bin/', import.meta.url);
-    assert.notEqual((await lstat(new URL('posix/probe token.sh', root))).mode & 0o111, 0);
-    assert.notEqual((await lstat(new URL('posix/probe', root))).mode & 0o111, 0);
-    assert.equal((await lstat(new URL('windows/probe token.cmd', root))).mode & 0o111, 0);
-    assert.equal((await lstat(new URL('windows/probe.cmd', root))).mode & 0o111, 0);
+test('explicit Windows batch execution preserves the spaced command and arguments',
+  { skip: process.platform !== 'win32', timeout: 30_000 }, async (t) => {
+    const files = await fixture(t);
+    const observation = await observe(await connect(files, 'command-token', { batch: true }));
+    assert.deepEqual(observation.evidence.argv, ['command-token', 'exact', ...configuredArgs]);
+    assert.equal(verdict(observation), 'pass');
+    t.diagnostic(JSON.stringify({ launch: 'batch', stderr: files.diagnostics.join('') }));
   });
+
+test('Core packages executable polyglot wrappers', { skip: process.platform === 'win32' }, async () => {
+  const root = new URL('../plugins/agent-plugins-conformance-core/bin/', import.meta.url);
+  for (const file of ['probe token.cmd', 'probe.cmd', 'probe']) {
+    assert.notEqual((await lstat(new URL(file, root))).mode & 0o111, 0);
+  }
+});

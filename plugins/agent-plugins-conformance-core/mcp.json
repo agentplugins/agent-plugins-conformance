@@ -56,18 +56,9 @@
       ],
       "cwd": "${PLUGIN_DATA}"
     },
-    "command-token-posix": {
+    "command-token": {
       "type": "stdio",
-      "command": "./bin/posix/probe token.sh",
-      "args": [
-        "arg with spaces",
-        "",
-        "literal-value"
-      ]
-    },
-    "command-token-windows": {
-      "type": "stdio",
-      "command": "./bin/windows/probe token.cmd",
+      "command": "./bin/probe token.cmd",
       "args": [
         "arg with spaces",
         "",

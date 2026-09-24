@@ -16967,8 +16967,8 @@ function observeDataWrite(data) {
 
 // plugins/agent-plugins-conformance-core/src/probe.mjs
 var serverName = process.argv[2];
-if (!["default", "relative", "root", "data", "command-token-posix", "command-token-windows"].includes(serverName)) {
-  throw new Error("Expected probe mode: default, relative, root, data, command-token-posix, or command-token-windows");
+if (!["default", "relative", "root", "data", "command-token"].includes(serverName)) {
+  throw new Error("Expected probe mode: default, relative, root, data, or command-token");
 }
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var environmentNames = ["PLUGIN_ROOT", "PLUGIN_DATA", "APC_VALUE", "APC_EXPANSION", "APC_LITERAL"];

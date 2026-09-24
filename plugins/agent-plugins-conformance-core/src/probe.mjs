@@ -7,8 +7,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { observeDataWrite } from './data-write.mjs';
 
 const serverName = process.argv[2];
-if (!['default', 'relative', 'root', 'data', 'command-token-posix', 'command-token-windows'].includes(serverName)) {
-  throw new Error('Expected probe mode: default, relative, root, data, command-token-posix, or command-token-windows');
+if (!['default', 'relative', 'root', 'data', 'command-token'].includes(serverName)) {
+  throw new Error('Expected probe mode: default, relative, root, data, or command-token');
 }
 // Both src/ and dist/ are immediate children of the installed plugin root.
 // This value is independent of the client-provided PLUGIN_ROOT environment.

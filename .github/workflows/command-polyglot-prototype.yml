@@ -1,0 +1,48 @@
+name: Command polyglot prototype
+on:
+  push:
+    branches: [agent/command-polyglot-prototype]
+permissions:
+  contents: read
+jobs:
+  prototype:
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+        include:
+          - os: ubuntu-latest
+            binary: codex-x86_64-unknown-linux-musl
+          - os: windows-latest
+            binary: codex-x86_64-pc-windows-msvc.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: node --test test/command-token.test.mjs
+      - name: Install pinned Codex
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: |
+          curl --fail --location "https://github.com/openai/codex/releases/download/rust-v0.155.1/${CODEX_BINARY}.tar.gz" --output codex.tar.gz
+          tar -xzf codex.tar.gz
+      - name: Check unchanged native installation
+        shell: bash
+        env:
+          CODEX_BINARY: ${{ matrix.binary }}
+        run: node scripts/smoke-codex.mjs "$RUNNER_TEMP/$CODEX_BINARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: polyglot-${{ matrix.os }}-${{ matrix.node }}
+          path: reports/
