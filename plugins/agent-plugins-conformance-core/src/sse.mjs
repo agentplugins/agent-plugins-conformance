@@ -6,6 +6,7 @@ import { AbsoluteSseServerTransport } from './absolute-sse-transport.mjs';
 import { requestEvidence } from './http-request.mjs';
 
 const sourceOrigin = 'http://127.0.0.1:43187';
+const nonLoopbackOrigin = 'http://0.0.0.0:43187';
 const destinationOrigin = 'http://127.0.0.1:43189';
 const redirectAttemptParameter = 'apcRedirectAttempt';
 const redirectAttemptLifetime = 30_000;
@@ -13,6 +14,10 @@ const sessions = new Map();
 const redirectAttempts = new Map();
 
 const fixtures = new Map([
+  [`${nonLoopbackOrigin}/conformance/recovery-sse-non-loopback`, {
+    server: 'recovery-sse-non-loopback', expectedHeader: null,
+    messageOrigin: nonLoopbackOrigin, messagePath: '/conformance/recovery-sse-non-loopback/messages',
+  }],
   [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
     server: 'sse-endpoint-origin', expectedHeader: 'public SSE endpoint fixture value',
     messageOrigin: destinationOrigin, messagePath: '/conformance/sse-endpoint-origin/messages',
@@ -51,7 +56,7 @@ function validateConnectionHeaders(request, listenerOrigin) {
   const expectedHost = new URL(listenerOrigin).host;
   if (request.headers.host !== expectedHost) return `Invalid Host header: ${request.headers.host}`;
   const origin = request.headers.origin;
-  if (origin && origin !== sourceOrigin && origin !== destinationOrigin) return `Invalid Origin header: ${origin}`;
+  if (origin && origin !== sourceOrigin && origin !== destinationOrigin && origin !== listenerOrigin) return `Invalid Origin header: ${origin}`;
 }
 
 function messageEvidence(request, listenerOrigin) {
@@ -90,7 +95,7 @@ async function openSession(request, response, fixture, connection, redirectSourc
   const options = {
     enableDnsRebindingProtection: true,
     allowedHosts: [new URL(fixture.messageOrigin).host],
-    allowedOrigins: [sourceOrigin, destinationOrigin],
+    allowedOrigins: [...new Set([sourceOrigin, destinationOrigin, fixture.messageOrigin])],
   };
   const transport = fixture.messageOrigin === connection.origin
     ? new SSEServerTransport(fixture.messagePath, response, options)

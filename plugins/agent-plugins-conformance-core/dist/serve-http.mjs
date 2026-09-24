@@ -24142,12 +24142,19 @@ data: ${JSON.stringify(message)}
 
 // plugins/agent-plugins-conformance-core/src/sse.mjs
 var sourceOrigin = "http://127.0.0.1:43187";
+var nonLoopbackOrigin = "http://0.0.0.0:43187";
 var destinationOrigin = "http://127.0.0.1:43189";
 var redirectAttemptParameter = "apcRedirectAttempt";
 var redirectAttemptLifetime = 3e4;
 var sessions = /* @__PURE__ */ new Map();
 var redirectAttempts = /* @__PURE__ */ new Map();
 var fixtures = new Map([
+  [`${nonLoopbackOrigin}/conformance/recovery-sse-non-loopback`, {
+    server: "recovery-sse-non-loopback",
+    expectedHeader: null,
+    messageOrigin: nonLoopbackOrigin,
+    messagePath: "/conformance/recovery-sse-non-loopback/messages"
+  }],
   [`${sourceOrigin}/conformance/sse-endpoint-origin`, {
     server: "sse-endpoint-origin",
     expectedHeader: "public SSE endpoint fixture value",
@@ -24196,7 +24203,7 @@ function validateConnectionHeaders(request, listenerOrigin) {
   const expectedHost = new URL(listenerOrigin).host;
   if (request.headers.host !== expectedHost) return `Invalid Host header: ${request.headers.host}`;
   const origin = request.headers.origin;
-  if (origin && origin !== sourceOrigin && origin !== destinationOrigin) return `Invalid Origin header: ${origin}`;
+  if (origin && origin !== sourceOrigin && origin !== destinationOrigin && origin !== listenerOrigin) return `Invalid Origin header: ${origin}`;
 }
 function messageEvidence(request, listenerOrigin) {
   return {
@@ -24233,7 +24240,7 @@ async function openSession(request, response, fixture, connection, redirectSourc
   const options = {
     enableDnsRebindingProtection: true,
     allowedHosts: [new URL(fixture.messageOrigin).host],
-    allowedOrigins: [sourceOrigin, destinationOrigin]
+    allowedOrigins: [.../* @__PURE__ */ new Set([sourceOrigin, destinationOrigin, fixture.messageOrigin])]
   };
   const transport = fixture.messageOrigin === connection.origin ? new SSEServerTransport(fixture.messagePath, response, options) : new AbsoluteSseServerTransport(endpoint, response, options);
   const server = makeServer(fixture.server, evidence);
@@ -24365,6 +24372,7 @@ var port = 43187;
 var pathname = "/conformance/mcp";
 var url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 var recoveryRoutes = /* @__PURE__ */ new Map([
+  ["/conformance/recovery-http-non-loopback", "recovery-http-non-loopback"],
   ["/conformance/recovery-http-relative-url", "recovery-http-relative-url"],
   ["/conformance/recovery-http-type", "recovery-http-type"],
   ["/conformance/recovery-http-header-name", "recovery-http-header-name"],
@@ -24376,7 +24384,9 @@ var recoveryRoutes = /* @__PURE__ */ new Map([
 var listener = createServer(async (request, response) => {
   const separator = request.url.indexOf("?");
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
-  if (await handleSse(request, response, requestPathname, `http://${host}:${port}`)) return;
+  const nonLoopbackSse = request.headers.host === `0.0.0.0:${port}` && ["/conformance/recovery-sse-non-loopback", "/conformance/recovery-sse-non-loopback/messages"].includes(requestPathname);
+  const listenerOrigin = `http://${nonLoopbackSse ? "0.0.0.0" : host}:${port}`;
+  if (await handleSse(request, response, requestPathname, listenerOrigin)) return;
   if (requestPathname === "/conformance/redirect") {
     await handleRedirect(request, response, "source");
     return;

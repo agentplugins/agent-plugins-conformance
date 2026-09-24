@@ -19,10 +19,36 @@ const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'a
 const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
+const invalidHttpServers = [
+  'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo',
+  'recovery-http-duplicate-headers', 'recovery-http-header-name', 'recovery-http-header-value',
+  'recovery-http-type', 'recovery-http-non-loopback',
+];
 const invalidSseServers = [
   'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
   'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
+  'recovery-sse-non-loopback',
 ];
+const invalidSseCaseIds = [
+  'mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
+  'mcp.sse.headers.duplicate-names', 'mcp.sse.headers.invalid-name', 'mcp.sse.headers.invalid-value',
+  'mcp.sse.url.non-loopback-http',
+];
+const hostPolicyCandidates = [
+  {
+    server: 'recovery-http-non-loopback', transport: 'streamable-http', kind: 'mcp-streamable-http',
+    url: 'http://0.0.0.0:43187/conformance/recovery-http-non-loopback',
+  },
+  {
+    server: 'recovery-sse-non-loopback', transport: 'sse', kind: 'mcp-sse',
+    url: 'http://0.0.0.0:43187/conformance/recovery-sse-non-loopback',
+  },
+];
+const hostPolicyControls = [
+  { server: 'http', transport: 'streamable-http', kind: 'mcp-streamable-http' },
+  { server: 'sse', transport: 'sse', kind: 'mcp-sse' },
+];
+const hostPolicyCandidateNames = new Set(hostPolicyCandidates.map(({ server }) => server));
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
   id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
@@ -67,6 +93,14 @@ async function hashes(directory) {
 function failProtocol(error) {
   protocolError = error;
   pending?.reject(error);
+}
+
+function errorData(error) {
+  return {
+    name: error?.name ?? 'Error',
+    message: error?.message ?? String(error),
+    ...(error?.code === undefined ? {} : { code: error.code }),
+  };
 }
 
 function rpc(method, params) {
@@ -210,22 +244,69 @@ try {
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
   for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field', 'recovery-missing-type',
-    'recovery-env-plugin-root', 'recovery-env-plugin-data',
-    'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
-    'recovery-http-header-name', 'recovery-http-header-value', 'recovery-http-type', ...invalidSseServers]) {
+    'recovery-env-plugin-root', 'recovery-env-plugin-data', ...invalidHttpServers, ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
     const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
       entry?.runtimeStatus === 'failed' && Object.keys(entry.tools).length === 0;
-    if (advertised) advertisedInvalidServers.push(server);
+    if (advertised && !hostPolicyCandidateNames.has(server)) advertisedInvalidServers.push(server);
     if (advertised || !entry || symlinkStartupFailure || (entry.runtimeStatus === 'connected' && entry.toolsError === null)) {
       record({ action: 'record', observation: { kind: 'mcp-discovery', server, advertised } });
     }
   }
+  const hostPolicyCalls = new Map();
+  for (const { server } of [...hostPolicyCandidates, ...hostPolicyControls]) {
+    const entry = status.data.find(({ name }) => name === server);
+    if (!entry || !Object.hasOwn(entry.tools, 'observe')) {
+      hostPolicyCalls.set(server, { status: 'not-advertised' });
+      continue;
+    }
+    try {
+      const result = await rpc('mcpServer/tool/call', {
+        threadId: thread.id, server, tool: 'observe', arguments: {},
+      });
+      hostPolicyCalls.set(server, { status: 'fulfilled', result });
+    } catch (error) {
+      hostPolicyCalls.set(server, { status: 'rejected', error: errorData(error) });
+    }
+  }
+  const nativeDiagnostics = (await readFile(join(output, 'app-server.stderr.log'), 'utf8')).split('\n')
+    .flatMap((line) => { try { return [JSON.parse(line)]; } catch { return []; } });
+  const hostPolicyEvidence = ({ server, transport, kind, url }) => ({
+    server, transport, kind, ...(url ? { configuredUrl: url } : {}),
+    inventory: status.data.find(({ name }) => name === server) ?? null,
+    diagnostics: nativeDiagnostics.filter((item) => item.fields?.server === server),
+    toolCall: hostPolicyCalls.get(server),
+  });
+  const hostPolicyArtifact = {
+    schemaVersion: 1,
+    client: { name: 'Codex', version, platform: process.platform },
+    inventoryComplete: status.nextCursor === null,
+    candidates: hostPolicyCandidates.map(hostPolicyEvidence),
+    controls: hostPolicyControls.map(hostPolicyEvidence),
+  };
+  await writeFile(join(output, 'host-policy-native.json'), `${JSON.stringify(hostPolicyArtifact, null, 2)}\n`);
+  const recordHostPolicyCandidate = ({ server, kind }) => {
+    const call = hostPolicyCalls.get(server);
+    if (call.status === 'not-advertised') return;
+    let observation;
+    if (call.status === 'fulfilled' && !call.result.isError && !call.result.error) {
+      observation = call.result.structuredContent;
+    } else {
+      const message = call.status === 'rejected'
+        ? call.error.message
+        : JSON.stringify(call.result.error ?? call.result.content ?? call.result);
+      observation = { kind, server, evidence: { type: 'error', message, classification: null } };
+    }
+    assert.equal(observation?.kind, kind, `${server}: missing observation`);
+    assert.equal(observation.server, server, `${server}: unexpected observation server`);
+    record({ action: 'record', observation });
+  };
   for (const server of [...servers, ...advertisedInvalidServers]) {
     assert.equal(status.data.filter(({ name }) => name === server).length, 1,
       `${server}: expected one native MCP server`);
-    const result = await rpc('mcpServer/tool/call', {
+    const captured = hostPolicyCalls.get(server);
+    const result = captured?.status === 'fulfilled' ? captured.result : await rpc('mcpServer/tool/call', {
       threadId: thread.id, server, tool: 'observe', arguments: {},
     });
     assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
@@ -241,13 +322,15 @@ try {
     }
     record({ action: 'record', observation });
   }
+  recordHostPolicyCandidate(hostPolicyCandidates[0]);
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
   const sseObservations = [];
   for (const server of ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin']) {
     const entry = status.data.find(({ name }) => name === server);
     let observation;
     if (entry && Object.hasOwn(entry.tools, 'observe')) {
-      const result = await rpc('mcpServer/tool/call', {
+      const captured = hostPolicyCalls.get(server);
+      const result = captured?.status === 'fulfilled' ? captured.result : await rpc('mcpServer/tool/call', {
         threadId: thread.id, server, tool: 'observe', arguments: {},
       });
       assert.ok(!result.isError && !result.error, `${server}: observe failed: ${JSON.stringify(result)}`);
@@ -265,13 +348,14 @@ try {
     record({ action: 'record', observation });
     sseObservations.push(observation);
   }
+  recordHostPolicyCandidate(hostPolicyCandidates[1]);
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
   assert.deepEqual(report.observations.filter(({ kind, server }) => kind === 'mcp-sse' && !invalidSseServers.includes(server)), sseObservations,
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    if (['mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
-      'mcp.sse.headers.duplicate-names', 'mcp.sse.headers.invalid-name', 'mcp.sse.headers.invalid-value'].includes(result.id)) {
+    if (invalidSseCaseIds.includes(result.id)) {
+      if (result.id === 'mcp.sse.url.non-loopback-http' && result.status === 'fail') continue;
       assert.equal(result.status, ['request', 'sse-session'].includes(baselineSse?.type) ? 'pass' : 'not_verified');
       continue;
     }
@@ -288,6 +372,18 @@ try {
   }
   assert.equal(report.observations.find((observation) => observation.kind === 'mcp-streamable-http')?.serverHealthCheck,
     'passed', 'HTTP fixture health check did not pass');
+  const hostPolicySynopsis = hostPolicyArtifact.candidates.map(({ server, inventory, toolCall }) => {
+    const inventoryState = inventory === null ? 'absent from complete inventory'
+      : Object.hasOwn(inventory.tools, 'observe') ? 'observe advertised' : `present (${inventory.runtimeStatus}) without observe`;
+    const callState = toolCall.status === 'not-advertised' ? 'not called'
+      : toolCall.status === 'fulfilled' ? 'observe returned' : 'observe rejected';
+    const caseId = server === 'recovery-http-non-loopback'
+      ? 'mcp.streamable-http.url.non-loopback-http' : 'mcp.sse.url.non-loopback-http';
+    const caseStatus = report.results.find(({ id }) => id === caseId)?.status ?? 'missing';
+    return `${server}: ${inventoryState}; ${callState}; ${caseId}=${caseStatus}`;
+  });
+  console.log(`Native host-policy evidence: ${hostPolicySynopsis.join(' | ')}`);
+  console.log(`Host-policy artifact: ${join(output, 'host-policy-native.json')}`);
   assert.equal(report.summary.fail, 0, `Report contains failed cases: ${JSON.stringify(report.summary)}`);
   for (const id of coveredCases) {
     assert.equal(report.results.find((result) => result.id === id)?.status, 'pass', `${id} did not pass`);
