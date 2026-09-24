@@ -121,8 +121,10 @@ test('unverified checks with supplied observations keep their individual reasons
   assert.match(human, /Argument preservation and expansion \(mcp.stdio.args.preservation-and-expansion\)/);
   assert.match(human, /Environment expansion \(mcp.stdio.env.expansion\)/);
   assert.match(human, /data working directory \(mcp.stdio.cwd.plugin-data\)/);
+  assert.match(human, /Consistent data directory within a plugin \(filesystem.data.consistent-within-plugin\)/);
   assert.match(human, /PLUGIN_DATA is missing; expected expansion cannot be computed\./);
   assert.match(human, /PLUGIN_DATA could not be resolved/);
+  assert.match(human, /Resolved PLUGIN_DATA unavailable for: data\./);
 });
 
 test('human diagnostic values cannot inject terminal controls or fake lines', () => {

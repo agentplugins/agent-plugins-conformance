@@ -256,7 +256,7 @@ test('data paths must remain distinct across the recovery and complete core evid
   assert.equal(result(buildReport(windows), id).status, 'fail');
 });
 
-test('core probes require one consistent resolved data path, under POSIX and Windows rules', () => {
+test('default and data cwd probes require one consistent resolved data path, under POSIX and Windows rules', () => {
   const id = 'filesystem.data.consistent-within-plugin';
   for (const [root, data, different] of [
     ['/fixture/plugin', '/state/plugin', '/state/other'],
@@ -265,14 +265,28 @@ test('core probes require one consistent resolved data path, under POSIX and Win
     const value = input(root, data);
     assert.equal(result(buildReport(value), id).status, 'pass');
 
-    const mismatch = structuredClone(value);
-    mismatch.observations = mismatch.observations.filter(({ server }) => !server || server === 'default' || server === 'data');
+    const requiredOnly = structuredClone(value);
+    requiredOnly.observations = requiredOnly.observations.filter(({ server }) => !server || server === 'default' || server === 'data');
+    assert.equal(result(buildReport(requiredOnly), id).status, 'pass');
+
+    const mismatch = structuredClone(requiredOnly);
     runtime(mismatch, 'data').resolvedData = different;
     assert.equal(result(buildReport(mismatch), id).status, 'fail');
 
-    const incomplete = structuredClone(value);
-    incomplete.observations = incomplete.observations.filter(({ server }) => !server || server !== 'data');
-    assert.equal(result(buildReport(incomplete), id).status, 'not_verified');
+    for (const missingServer of ['default', 'data']) {
+      const absent = structuredClone(requiredOnly);
+      absent.observations = absent.observations.filter(({ server }) => server !== missingServer);
+      assert.equal(result(buildReport(absent), id).status, 'not_verified');
+
+      const unresolved = structuredClone(requiredOnly);
+      runtime(unresolved, missingServer).resolvedData = null;
+      assert.equal(result(buildReport(unresolved), id).status, 'not_verified');
+    }
+
+    const unrelated = structuredClone(value);
+    runtime(unrelated, 'relative').resolvedData = different;
+    runtime(unrelated, 'root').resolvedData = null;
+    assert.equal(result(buildReport(unrelated), id).status, 'pass');
   }
 });
 

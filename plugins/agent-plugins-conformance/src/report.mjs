@@ -630,15 +630,18 @@ export function buildReport(input) {
         ? `Resolved PLUGIN_DATA unavailable for: ${missingData.join(', ')}.`
         : `Core servers ${coreData.map(([server]) => server).join(', ')} resolved PLUGIN_DATA to paths distinct from recovery-valid (${JSON.stringify(recoveryData)}).`);
 
-  const [firstCoreData, ...otherCoreData] = coreData;
-  const inconsistentData = firstCoreData
-    ? otherCoreData.filter(([, data]) => !samePath(data, firstCoreData[1], pathFlavor(firstCoreData[1]))) : [];
-  set('filesystem.data.consistent-within-plugin', inconsistentData.length ? 'fail' : missingCoreData.length ? 'not_verified' : 'pass',
-    inconsistentData.length
-      ? [firstCoreData, ...inconsistentData].map(([server, data]) => `${server} resolved PLUGIN_DATA to ${JSON.stringify(data)}.`).join(' ')
-      : missingCoreData.length
-        ? `Resolved PLUGIN_DATA unavailable for: ${missingCoreData.join(', ')}.`
-        : 'All four core servers resolved PLUGIN_DATA to the same path.');
+  const consistencyServers = ['default', 'data'];
+  const missingConsistencyData = consistencyServers.filter((server) => runtime.get(server)?.resolvedData == null);
+  if (missingConsistencyData.length) {
+    set('filesystem.data.consistent-within-plugin', 'not_verified',
+      `Resolved PLUGIN_DATA unavailable for: ${missingConsistencyData.join(', ')}.`);
+  } else {
+    const defaultData = runtime.get('default').resolvedData;
+    const dataCwdData = runtime.get('data').resolvedData;
+    check('filesystem.data.consistent-within-plugin', samePath(dataCwdData, defaultData, pathFlavor(defaultData)),
+      'The default and data working-directory servers resolved PLUGIN_DATA to the same path.',
+      `default resolved PLUGIN_DATA to ${JSON.stringify(defaultData)}. data resolved PLUGIN_DATA to ${JSON.stringify(dataCwdData)}.`);
+  }
   const evidence = runtime.get('default');
   if (evidence) {
     const { root, env, argv } = evidence;
