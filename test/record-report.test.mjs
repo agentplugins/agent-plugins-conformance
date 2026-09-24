@@ -23,6 +23,21 @@ const mcp = () => ({
     },
   },
 });
+const commandToken = (platform = 'posix', {
+  root = platform === 'posix' ? '/plugin' : 'C:\\plugin',
+  data = platform === 'posix' ? '/data' : 'D:\\data',
+  origin = `${platform}-exact`, marker = 'intact',
+  args = ['arg with spaces', '', 'literal-value'],
+} = {}) => {
+  const server = `command-token-${platform}`;
+  return {
+    kind: 'mcp-stdio', server,
+    evidence: {
+      version: 1, server, root, cwd: root, resolvedData: data,
+      argv: [server, origin, marker, ...args], env: {},
+    },
+  };
+};
 const recoverySkill = (marker = 'APC_RECOVERY_VALID_V1') => ({
   kind: 'skill', skill: 'conformance-recovery-valid', marker,
 });
@@ -374,6 +389,34 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.plugin-root').status, 'fail');
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.expansion').status, 'not_verified');
   assert.deepEqual(await readdir(join(f.directory, 'nested directory')), ['report with spaces.json']);
+});
+
+test('command-token evidence records canonically and replacement changes only its verdict', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  f.record(mcp());
+  const exact = commandToken();
+  f.record(exact);
+  let report = await f.read();
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'pass');
+  assert.deepEqual(report.observations, [mcp(), exact]);
+
+  exact.evidence.argv.push('changed after recording');
+  assert.notDeepEqual(report.observations[1], exact);
+
+  const split = commandToken('posix', {
+    origin: 'posix-decoy', marker: 'split', args: ['token.sh', 'mangled', 'later', 'arguments'],
+  });
+  f.record(split);
+  report = await f.read();
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'fail');
+  assert.deepEqual(report.observations, [mcp(), split]);
+
+  const windows = commandToken('windows');
+  f.record(windows);
+  report = await f.read();
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'fail');
+  assert.deepEqual(report.observations, [mcp(), split, windows]);
 });
 
 test('recovery observations have distinct recorder keys and repeated keys replace canonically', async (t) => {

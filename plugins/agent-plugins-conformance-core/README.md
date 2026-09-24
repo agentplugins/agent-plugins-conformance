@@ -6,6 +6,8 @@ Install this fixture alongside [Agent Plugins Conformance](../agent-plugins-conf
 
 Node.js 22 or newer must be available as `node` on the client's executable search path. The committed MCP bundle includes the official MCP SDK and requires no dependency installation or build.
 
+The command-token check includes POSIX and Windows servers. Only the server for the current platform is expected to run; the other may produce a startup error.
+
 ## Optional HTTP setup
 
 To include checks for MCP servers using Streamable HTTP or legacy HTTP+SSE, start the bundled server in a separate terminal **before the client loads the plugin**:
@@ -28,9 +30,10 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.stdio.env.plugin-root` | Supplied `PLUGIN_ROOT` matches the independently determined package root. |
 | `mcp.stdio.env.plugin-data-absolute` | Supplied `PLUGIN_DATA` is an absolute path. This check does not exercise writability, storage dedication, or persistence across updates. |
 | `filesystem.data.writable` | The default server can create, write, and close a small temporary file directly in the supplied `PLUGIN_DATA` directory. |
-| `filesystem.data.consistent-within-plugin` | All four servers resolve `PLUGIN_DATA` to the same path. |
+| `filesystem.data.consistent-within-plugin` | Servers using omitted and data-rooted working directories resolve `PLUGIN_DATA` to the same filesystem path. |
 | `mcp.stdio.env.configured-value` | The configured value reaches the subprocess. The fixture does not arrange a conflicting inherited value, so it does not establish override behavior. |
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
+| `mcp.stdio.command.single-token` | A command path containing a space is preserved as a single executable token. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |
 | `mcp.streamable-http.tool-availability` | The client exposes the HTTP tool and it returns a valid observation despite a conflicting, mixed-case configured `Accept` header. A completed discovery or call attempt with no observation fails this check only when the reporter confirms that the local fixture is healthy. |
 | `mcp.streamable-http.url.literal-route-and-query` | The configured URL path and query are preserved literally. |

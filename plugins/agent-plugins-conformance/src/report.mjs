@@ -3,6 +3,10 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
+const COMMAND_TOKEN_SERVERS = Object.freeze({
+  'command-token-posix': Object.freeze({ exactOrigin: 'posix-exact', decoyOrigin: 'posix-decoy', splitTail: 'token.sh' }),
+  'command-token-windows': Object.freeze({ exactOrigin: 'windows-exact', decoyOrigin: 'windows-decoy', splitTail: 'token.cmd' }),
+});
 const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-cwd-invalid-form': 'mcp.stdio.cwd.invalid-form',
   'recovery-cwd-escape': 'mcp.stdio.cwd.plugin-relative-escape',
@@ -34,7 +38,7 @@ const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
 const RECOVERY_INVALID_SERVER_NAMES = [
   ...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS), ...Object.keys(INVALID_SSE_SERVERS),
 ];
-const SERVERS = [...CORE_SERVERS, 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
+const SERVERS = [...CORE_SERVERS, ...Object.keys(COMMAND_TOKEN_SERVERS), 'recovery-valid', ...INVALID_STDIO_SERVER_NAMES];
 const HTTP_SERVERS = ['http', 'http-redirect', ...Object.keys(INVALID_HTTP_SERVERS)];
 const SSE_SERVERS = [
   'sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin', ...Object.keys(INVALID_SSE_SERVERS),
@@ -537,6 +541,34 @@ export function buildReport(input) {
         'Working directory matches the resolved expected path.', mismatch('Working directory', target, evidence.cwd));
     }
   }
+  const defaultEvidence = runtime.get('default');
+  const commandTokenId = 'mcp.stdio.command.single-token';
+  if (defaultEvidence) {
+    const defaultFlavor = pathFlavor(defaultEvidence.root);
+    const platform = defaultFlavor === path.win32 ? 'windows' : 'posix';
+    const server = `command-token-${platform}`;
+    const variant = COMMAND_TOKEN_SERVERS[server];
+    const evidence = runtime.get(server);
+    if (!evidence) {
+      set(commandTokenId, 'not_verified', `No attributable ${platform} command-token observation was supplied.`);
+    } else if (!samePath(evidence.root, defaultEvidence.root, defaultFlavor)) {
+      set(commandTokenId, 'not_verified',
+        `The ${platform} command-token observation did not identify the same installed plugin root as the Core default observation.`);
+    } else {
+      const split = evidence.argv[0] === server && evidence.argv[1] === variant.decoyOrigin &&
+        evidence.argv[2] === 'split' && evidence.argv[3] === variant.splitTail;
+      const intact = evidence.argv[0] === server && evidence.argv[1] === variant.exactOrigin && evidence.argv[2] === 'intact';
+      if (split) {
+        set(commandTokenId, 'fail',
+          `The ${platform} decoy wrapper received ${JSON.stringify(variant.splitTail)} as an argument, showing that the configured command was split.`);
+      } else if (intact) {
+        set(commandTokenId, 'pass', `The ${platform} exact-name wrapper was selected.`);
+      } else {
+        set(commandTokenId, 'not_verified',
+          `The ${platform} command-token observation did not identify either the exact-name wrapper or an attributable split-name decoy.`);
+      }
+    }
+  }
   if (skills.has('conformance-recovery-valid')) {
     check('skills.recovery.valid-skill-available', skills.get('conformance-recovery-valid') === SKILLS['conformance-recovery-valid'],
       'Agent reported the expected client-loaded marker for the valid recovery skill.',
@@ -630,15 +662,18 @@ export function buildReport(input) {
         ? `Resolved PLUGIN_DATA unavailable for: ${missingData.join(', ')}.`
         : `Core servers ${coreData.map(([server]) => server).join(', ')} resolved PLUGIN_DATA to paths distinct from recovery-valid (${JSON.stringify(recoveryData)}).`);
 
-  const [firstCoreData, ...otherCoreData] = coreData;
-  const inconsistentData = firstCoreData
-    ? otherCoreData.filter(([, data]) => !samePath(data, firstCoreData[1], pathFlavor(firstCoreData[1]))) : [];
-  set('filesystem.data.consistent-within-plugin', inconsistentData.length ? 'fail' : missingCoreData.length ? 'not_verified' : 'pass',
-    inconsistentData.length
-      ? [firstCoreData, ...inconsistentData].map(([server, data]) => `${server} resolved PLUGIN_DATA to ${JSON.stringify(data)}.`).join(' ')
-      : missingCoreData.length
-        ? `Resolved PLUGIN_DATA unavailable for: ${missingCoreData.join(', ')}.`
-        : 'All four core servers resolved PLUGIN_DATA to the same path.');
+  const consistencyServers = ['default', 'data'];
+  const missingConsistencyData = consistencyServers.filter((server) => runtime.get(server)?.resolvedData == null);
+  if (missingConsistencyData.length) {
+    set('filesystem.data.consistent-within-plugin', 'not_verified',
+      `Resolved PLUGIN_DATA unavailable for: ${missingConsistencyData.join(', ')}.`);
+  } else {
+    const defaultData = runtime.get('default').resolvedData;
+    const dataCwdData = runtime.get('data').resolvedData;
+    check('filesystem.data.consistent-within-plugin', samePath(dataCwdData, defaultData, pathFlavor(defaultData)),
+      'The default and data working-directory servers resolved PLUGIN_DATA to the same path.',
+      `default resolved PLUGIN_DATA to ${JSON.stringify(defaultData)}. data resolved PLUGIN_DATA to ${JSON.stringify(dataCwdData)}.`);
+  }
   const evidence = runtime.get('default');
   if (evidence) {
     const { root, env, argv } = evidence;
