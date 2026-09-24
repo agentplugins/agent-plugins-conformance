@@ -1,0 +1,29 @@
+name: HTTP host prototype
+on:
+  push:
+    branches: [agent/http-host-prototype]
+permissions:
+  contents: read
+jobs:
+  reachability:
+    runs-on: '${{ matrix.os }}'
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '${{ matrix.node }}'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/research/http-host-platforms.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: host-${{ matrix.os }}-${{ matrix.node }}
+          path: reports/http-host/
