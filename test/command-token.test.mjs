@@ -15,6 +15,7 @@ async function fixture(t) {
   const root = join(await realpath(parent), 'installed plugin with spaces');
   const clients = [];
   const diagnostics = [];
+  const protocolErrors = [];
   await writeFile(join(parent, 'package.json'), '{"type":"module"}\n');
   await cp(new URL('../plugins/agent-plugins-conformance-core/', import.meta.url), root, { recursive: true });
   t.after(async () => {
@@ -22,12 +23,13 @@ async function fixture(t) {
       const results = await Promise.allSettled(clients.map((client) => client.close()));
       const failures = results.filter(({ status }) => status === 'rejected').map(({ reason }) => reason);
       if (failures.length) throw new AggregateError(failures, 'MCP clients failed to close');
+      assert.deepEqual(protocolErrors, [], 'The server wrote invalid MCP output');
     } finally {
       await rm(parent, { recursive: true, force: true });
     }
   });
   const config = JSON.parse(await readFile(join(root, 'mcp.json'), 'utf8'));
-  return { parent, root, clients, config, diagnostics };
+  return { parent, root, clients, config, diagnostics, protocolErrors };
 }
 
 async function connect(files, server, { split = false, batch = false } = {}) {
@@ -44,12 +46,14 @@ async function connect(files, server, { split = false, batch = false } = {}) {
     }
   }
   if (batch) {
+    // This helper has no shebang, so the SDK must exercise batch execution.
     command = join(files.parent, 'ordinary batch launcher.cmd');
-    await writeFile(command, '@echo off\r\ncall ".\\bin\\probe token.cmd" %*\r\n');
+    await writeFile(command, '@call ".\\bin\\probe token.cmd" %*\r\n');
   }
   const env = Object.fromEntries(Object.entries(process.env));
   for (const name of ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL']) delete env[name];
   const client = new Client({ name: 'command-token-reference-test', version: '1' });
+  client.onerror = (error) => files.protocolErrors.push(error);
   files.clients.push(client);
   const transport = new StdioClientTransport({ command, args, cwd: files.root, env, stderr: 'pipe' });
   transport.stderr.on('data', (data) => files.diagnostics.push(data.toString()));
@@ -66,7 +70,7 @@ async function observe(client) {
   return result.structuredContent;
 }
 
-test('the copied Core fixture preserves the platform command token and configured arguments',
+test('the copied Core fixture preserves the command token and configured arguments beneath an ES module parent',
   { timeout: 30_000 }, async (t) => {
     const files = await fixture(t);
     assert.equal((await readdir(files.root)).includes('node_modules'), false);
