@@ -21,6 +21,13 @@ function input() {
             APC_EXPANSION: `${root}|${data}|${root}`, APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}' },
         },
       })),
+      {
+        kind: 'mcp-stdio', server: 'command-token-posix',
+        evidence: {
+          version: 1, server: 'command-token-posix', root, cwd: root, resolvedData: data,
+          argv: ['command-token-posix', 'posix-exact', 'intact', 'arg with spaces', '', 'literal-value'], env: {},
+        },
+      },
       { kind: 'skill-discovery', skill: 'conformance-nested', advertised: false },
     ],
   };
@@ -52,9 +59,9 @@ test('complete stdio and recovery evidence leaves optional HTTP and SSE checks u
     '',
     'Checks       Passed  Failed  Not verified',
     'Skills            3       0             0',
-    'MCP              21       0            24',
+    'MCP              22       0            24',
     'Filesystem        4       0             0',
-    'Total            28       0            24',
+    'Total            29       0            24',
   ].join('\n'));
   const missing = human.split('\n\nNot verified\n')[1];
   for (const id of [
@@ -91,7 +98,7 @@ test('all-unverified human report preserves every saved missing-evidence result'
   value.observations = [];
   const human = formatReport(buildReport(value));
   assert.match(human, /Skills\s+0\s+0\s+3/);
-  assert.match(human, /MCP\s+0\s+0\s+45/);
+  assert.match(human, /MCP\s+0\s+0\s+46/);
   assert.match(human, /Filesystem\s+0\s+0\s+4/);
   assert.match(human, /Missing skill observations: conformance-alpha, conformance-beta\./);
   for (const result of buildReport(value).results) assert.ok(human.includes(`(${result.id})`));
@@ -103,7 +110,7 @@ test('mixed human report puts failures before missing-evidence details', () => {
   value.observations = [value.observations[2]];
   value.observations[0].evidence.env.APC_VALUE = 'incorrect configured value';
   const human = formatReport(buildReport(value));
-  assert.match(human, /MCP\s+6\s+1\s+38/);
+  assert.match(human, /MCP\s+6\s+1\s+39/);
   assert.match(human, /Filesystem\s+1\s+0\s+3/);
   assert.match(human, /Configured environment \(mcp.stdio.env.configured-value\)/);
   assert.match(human, /"fixture value with spaces"/);
@@ -158,7 +165,7 @@ test('human report renders saved warnings independently of result status', () =>
   const writable = value.results.find(({ id }) => id === 'filesystem.data.writable');
   writable.status = 'not_verified';
   writable.warning = 'Saved cleanup warning for /state/plugin/leftover.';
-  value.summary = { pass: 15, fail: 0, not_verified: 37, total: 52 };
+  value.summary = { pass: 16, fail: 0, not_verified: 37, total: 53 };
   value.observations = [];
 
   const human = formatReport(value);

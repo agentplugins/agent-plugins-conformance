@@ -56,6 +56,24 @@
       ],
       "cwd": "${PLUGIN_DATA}"
     },
+    "command-token-posix": {
+      "type": "stdio",
+      "command": "./bin/posix/probe token.sh",
+      "args": [
+        "arg with spaces",
+        "",
+        "literal-value"
+      ]
+    },
+    "command-token-windows": {
+      "type": "stdio",
+      "command": "./bin/windows/probe token.cmd",
+      "args": [
+        "arg with spaces",
+        "",
+        "literal-value"
+      ]
+    },
     "sse": {
       "type": "sse",
       "url": "http://127.0.0.1:43187/conformance/sse?value=$APC_SSE_VALUE",
