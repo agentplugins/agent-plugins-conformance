@@ -61,6 +61,8 @@ const env = Object.fromEntries(Object.entries(process.env)
   .filter(([key]) => !/OPENAI|CODEX|CHATGPT|^APC_|^PLUGIN_|^PATH$/i.test(key)));
 env.CODEX_HOME = home;
 env.PATH = `${dirname(process.execPath)}${delimiter}${searchPath}`;
+env.RUST_LOG = 'warn';
+env.LOG_FORMAT = 'json';
 let appServer;
 let stderr;
 let httpServer;
@@ -286,6 +288,17 @@ try {
     controls: hostPolicyControls.map(hostPolicyEvidence),
   };
   await writeFile(join(output, 'host-policy-native.json'), `${JSON.stringify(hostPolicyArtifact, null, 2)}\n`);
+  for (const [server, expectedError] of [
+    ['recovery-http-non-loopback', 'non-loopback Agent Plugins MCP endpoints must use HTTPS'],
+    ['recovery-sse-non-loopback', 'Agent Plugins legacy SSE transport is not supported by Codex'],
+  ]) {
+    const candidate = hostPolicyArtifact.candidates.find((item) => item.server === server);
+    assert.ok(candidate.diagnostics.some((diagnostic) => diagnostic.level === 'WARN' &&
+      diagnostic.target === 'codex_core_plugins::loader' &&
+      diagnostic.fields?.message === 'failed to parse plugin MCP server' &&
+      diagnostic.fields?.server === server && diagnostic.fields?.error === expectedError),
+      `${server}: expected the pinned Codex rejection diagnostic in host-policy-native.json`);
+  }
   const recordHostPolicyCandidate = ({ server, kind }) => {
     const call = hostPolicyCalls.get(server);
     if (call.status === 'not-advertised') return;

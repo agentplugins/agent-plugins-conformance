@@ -266,8 +266,10 @@ try {
   await mkdir(new URL('../../reports/http-host-fixtures/', import.meta.url), { recursive: true });
   await writeFile(resultPath, `${JSON.stringify(evidence, null, 2)}\n`);
   if (completed) {
-    assert.equal(child.exitCode, 0, 'HTTP helper did not exit cleanly');
-    assert.equal(child.signalCode, null, 'HTTP helper required a terminating signal');
+    // Windows terminates SIGTERM targets directly instead of running their handler.
+    assert.deepEqual(evidence.helper.exit, process.platform === 'win32'
+      ? { code: null, signal: 'SIGTERM' } : { code: 0, signal: null },
+    'HTTP helper did not stop as requested');
   }
 }
 
