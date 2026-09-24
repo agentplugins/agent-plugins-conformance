@@ -11,6 +11,7 @@ const port = 43187;
 const pathname = '/conformance/mcp';
 const url = `http://${host}:${port}${pathname}?value=$APC_HTTP_VALUE`;
 const recoveryRoutes = new Map([
+  ['/conformance/recovery-http-non-loopback', 'recovery-http-non-loopback'],
   ['/conformance/recovery-http-relative-url', 'recovery-http-relative-url'],
   ['/conformance/recovery-http-type', 'recovery-http-type'],
   ['/conformance/recovery-http-header-name', 'recovery-http-header-name'],
@@ -23,7 +24,10 @@ const recoveryRoutes = new Map([
 const listener = createServer(async (request, response) => {
   const separator = request.url.indexOf('?');
   const requestPathname = separator === -1 ? request.url : request.url.slice(0, separator);
-  if (await handleSse(request, response, requestPathname, `http://${host}:${port}`)) return;
+  const nonLoopbackSse = request.headers.host === `0.0.0.0:${port}` &&
+    ['/conformance/recovery-sse-non-loopback', '/conformance/recovery-sse-non-loopback/messages'].includes(requestPathname);
+  const listenerOrigin = `http://${nonLoopbackSse ? '0.0.0.0' : host}:${port}`;
+  if (await handleSse(request, response, requestPathname, listenerOrigin)) return;
   if (requestPathname === '/conformance/redirect') {
     await handleRedirect(request, response, 'source');
     return;

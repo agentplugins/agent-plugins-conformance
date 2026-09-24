@@ -55,6 +55,10 @@
       "args": ["${PLUGIN_ROOT}/dist/probe.mjs", "recovery-env-plugin-data"],
       "env": { "PLUGIN_DATA": "${PLUGIN_DATA}" }
     },
+    "recovery-http-non-loopback": {
+      "type": "streamable-http",
+      "url": "http://0.0.0.0:43187/conformance/recovery-http-non-loopback"
+    },
     "recovery-http-relative-url": {
       "type": "streamable-http",
       "url": "//127.0.0.1:43187/conformance/recovery-http-relative-url"
@@ -85,6 +89,10 @@
       "type": "streamable-http",
       "url": "http://127.0.0.1:43187/conformance/recovery-http-duplicate-headers",
       "headers": { "X-Apc-Duplicate": "first", "x-apc-duplicate": "second" }
+    },
+    "recovery-sse-non-loopback": {
+      "type": "sse",
+      "url": "http://0.0.0.0:43187/conformance/recovery-sse-non-loopback"
     },
     "recovery-sse-relative-url": {
       "type": "sse",

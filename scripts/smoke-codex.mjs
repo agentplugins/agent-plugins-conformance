@@ -20,7 +20,7 @@ const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
-  'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
+  'recovery-sse-non-loopback', 'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
   'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
 ];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
@@ -211,7 +211,7 @@ try {
   const advertisedInvalidServers = [];
   for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field', 'recovery-missing-type',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
-    'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
+    'recovery-http-non-loopback', 'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
     'recovery-http-header-name', 'recovery-http-header-value', 'recovery-http-type', ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
@@ -270,7 +270,7 @@ try {
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
   for (const result of report.results.filter(({ id }) => id.startsWith('mcp.sse.'))) {
-    if (['mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
+    if (['mcp.sse.url.non-loopback-http', 'mcp.sse.url.relative', 'mcp.sse.url.fragment', 'mcp.sse.url.userinfo',
       'mcp.sse.headers.duplicate-names', 'mcp.sse.headers.invalid-name', 'mcp.sse.headers.invalid-value'].includes(result.id)) {
       assert.equal(result.status, ['request', 'sse-session'].includes(baselineSse?.type) ? 'pass' : 'not_verified');
       continue;

@@ -63,6 +63,7 @@ const invalidServerCases = [
   ['recovery-env-plugin-data', 'mcp.stdio.env.reserved-plugin-data'],
 ];
 const invalidHttpServerCases = [
+  ['recovery-http-non-loopback', 'mcp.streamable-http.url.non-loopback-http'],
   ['recovery-http-type', 'mcp.config.legacy-http-type'],
   ['recovery-http-relative-url', 'mcp.streamable-http.url.relative'],
   ['recovery-http-fragment', 'mcp.streamable-http.url.fragment'],
@@ -72,6 +73,7 @@ const invalidHttpServerCases = [
   ['recovery-http-header-value', 'mcp.streamable-http.headers.invalid-value'],
 ];
 const invalidSseServerCases = [
+  ['recovery-sse-non-loopback', 'mcp.sse.url.non-loopback-http'],
   ['recovery-sse-relative-url', 'mcp.sse.url.relative'],
   ['recovery-sse-fragment', 'mcp.sse.url.fragment'],
   ['recovery-sse-userinfo', 'mcp.sse.url.userinfo'],
