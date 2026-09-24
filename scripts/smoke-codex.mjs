@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -16,7 +16,9 @@ const [codex, ...extra] = process.argv.slice(2);
 assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
-const servers = ['default', 'relative', 'root', 'data', 'http', 'recovery-valid'];
+const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
+const commandServer = `command-token-${commandPlatform}`;
+const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
   'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
   'recovery-sse-duplicate-headers', 'recovery-sse-header-name', 'recovery-sse-header-value',
@@ -24,7 +26,7 @@ const invalidSseServers = [
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
   id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
-const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc-codex-smoke-')));
+const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc codex smoke ')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
 const marketplace = join(temporary, 'marketplace');
@@ -161,6 +163,12 @@ try {
       if (!actual.some(([path]) => path === 'escape-link')) expected = original.filter(([path]) => path !== 'escape-link');
     }
     assert.deepEqual(actual, expected, `${name}: installed package differs from source`);
+    if (name === 'agent-plugins-conformance-core' && process.platform !== 'win32') {
+      for (const file of ['bin/posix/probe token.sh', 'bin/posix/probe']) {
+        assert.ok((await stat(join(installedPath, file))).mode & 0o111,
+          `${file}: installed wrapper is not executable`);
+      }
+    }
     installed.push(installedPath);
   }
   const reporter = join(installed[1], 'skills/run-conformance/scripts/report.mjs');
@@ -226,6 +234,11 @@ try {
       : invalidSseServers.includes(server) ? 'mcp-sse' : 'mcp-stdio',
       `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
+    if (server === commandServer) {
+      assert.deepEqual(observation.evidence.argv,
+        [commandServer, `${commandPlatform}-exact`, 'intact', 'arg with spaces', '', 'literal-value'],
+        'Native launch did not preserve the command token and configured arguments');
+    }
     record({ action: 'record', observation });
   }
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
