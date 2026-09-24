@@ -15,6 +15,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 const origin = 'http://127.0.0.1:43187';
 const endpoint = `${origin}/conformance/mcp`;
 const sseEndpoint = `${origin}/conformance/sse`;
+const nonLoopbackOrigin = 'http://0.0.0.0:43187';
 const sourceOrigin = origin;
 const destinationOrigin = 'http://127.0.0.1:43189';
 const redirectHeader = 'public SSE redirect fixture value';
@@ -253,6 +254,66 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal(JSON.stringify(result).includes('private'), false);
   });
 
+  await t.test('non-loopback plaintext recovery URLs remain attributable through complete SDK exchanges', async (t) => {
+    const mcp = JSON.parse(await readFile(new URL('../plugins/agent-plugins-conformance-recovery/mcp.json', import.meta.url), 'utf8'));
+    const cases = [
+      {
+        server: 'recovery-http-non-loopback', type: 'streamable-http',
+        kind: 'mcp-streamable-http', id: 'mcp.streamable-http.url.non-loopback-http',
+      },
+      {
+        server: 'recovery-sse-non-loopback', type: 'sse',
+        kind: 'mcp-sse', id: 'mcp.sse.url.non-loopback-http',
+      },
+    ];
+
+    for (const { server: serverName, type, kind, id } of cases) {
+      const configured = mcp.mcpServers[serverName];
+      const configuredUrl = `${nonLoopbackOrigin}/conformance/${serverName}`;
+      assert.deepEqual(configured, { type, url: configuredUrl });
+
+      const requests = [];
+      const trackedFetch = async (input, init) => {
+        requests.push({ method: init?.method ?? 'GET', url: String(input) });
+        return fetch(input, init);
+      };
+      const client = new Client({ name: 'non-loopback-reference-test', version: '1' });
+      t.after(() => client.close());
+      const transport = type === 'streamable-http'
+        ? new StreamableHTTPClientTransport(new URL(configured.url), { fetch: trackedFetch })
+        : new SSEClientTransport(new URL(configured.url), { fetch: trackedFetch });
+      await client.connect(transport);
+
+      assert.equal(client.getServerVersion().name, `agent-plugins-conformance-${serverName}`);
+      const tools = (await client.listTools()).tools;
+      assert.deepEqual(tools.map(({ name }) => name), ['observe']);
+      assert.ok(tools[0].description.includes(`server ID: ${serverName}.`));
+      const result = await client.callTool({ name: 'observe', arguments: {} });
+      assert.equal(result.isError, undefined);
+      assert.equal(result.structuredContent.kind, kind);
+      assert.equal(result.structuredContent.server, serverName);
+      assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
+
+      assert.equal(requests[0].url, configured.url);
+      assert.ok(requests.length >= 3);
+      assert.ok(requests.every(({ url }) => new URL(url).hostname === '0.0.0.0'));
+      if (type === 'streamable-http') {
+        assert.equal(result.structuredContent.evidence.pathname, `/conformance/${serverName}`);
+      } else {
+        const { connection, messages } = result.structuredContent.evidence;
+        assert.equal(connection.origin, nonLoopbackOrigin);
+        assert.ok(messages.length > 0);
+        assert.ok(messages.every(({ origin: messageOrigin }) => messageOrigin === nonLoopbackOrigin));
+      }
+
+      const observation = type === 'streamable-http'
+        ? { ...result.structuredContent, serverHealthCheck: 'passed' }
+        : result.structuredContent;
+      const report = buildReport({ schemaVersion: 1, observations: [observation] });
+      assert.equal(report.results.find((candidate) => candidate.id === id).status, 'fail');
+    }
+  });
+
   await t.test('legacy SSE routes reject incompatible methods, sessions, and Streamable HTTP', async (t) => {
     for (const [path, method, status, allow] of [
       ['/conformance/sse', 'POST', 405, 'GET'],
@@ -269,6 +330,17 @@ test('standalone HTTP bundle serves independent MCP requests and stops cleanly',
     assert.equal((await http('/conformance/sse/messages?sessionId=first&sessionId=second', { method: 'POST' })).status, 404);
     assert.equal((await http('/conformance/sse/')).status, 404);
     assert.equal((await http('/conformance/sse', { headers: { Origin: 'https://unrelated.example' } })).status, 403);
+    for (const path of [
+      '/conformance/sse',
+      '/conformance/sse-header-precedence',
+      '/conformance/sse-endpoint-origin',
+      '/conformance/sse-redirect',
+    ]) {
+      assert.equal((await http(path, { headers: { Host: '0.0.0.0:43187' } })).status, 403, path);
+    }
+    assert.equal((await http('/conformance/recovery-sse-non-loopback', {
+      headers: { Host: 'fixture.invalid:43187' },
+    })).status, 404);
 
     const client = new Client({ name: 'incompatible-sse-reference-test', version: '1' });
     t.after(() => client.close());

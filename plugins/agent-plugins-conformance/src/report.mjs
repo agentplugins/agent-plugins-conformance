@@ -18,6 +18,7 @@ const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-env-plugin-data': 'mcp.stdio.env.reserved-plugin-data',
 });
 const INVALID_HTTP_SERVERS = Object.freeze({
+  'recovery-http-non-loopback': 'mcp.streamable-http.url.non-loopback-http',
   'recovery-http-type': 'mcp.config.legacy-http-type',
   'recovery-http-relative-url': 'mcp.streamable-http.url.relative',
   'recovery-http-fragment': 'mcp.streamable-http.url.fragment',
@@ -27,6 +28,7 @@ const INVALID_HTTP_SERVERS = Object.freeze({
   'recovery-http-header-value': 'mcp.streamable-http.headers.invalid-value',
 });
 const INVALID_SSE_SERVERS = Object.freeze({
+  'recovery-sse-non-loopback': 'mcp.sse.url.non-loopback-http',
   'recovery-sse-relative-url': 'mcp.sse.url.relative',
   'recovery-sse-fragment': 'mcp.sse.url.fragment',
   'recovery-sse-userinfo': 'mcp.sse.url.userinfo',

@@ -111,6 +111,14 @@ test('recovery fixture contains exactly the intended invalid manifest and MCP fi
     type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/dist/probe.mjs', 'recovery-env-plugin-data'],
     env: { PLUGIN_DATA: '${PLUGIN_DATA}' },
   });
+  assert.deepEqual(mcp.mcpServers['recovery-http-non-loopback'], {
+    type: 'streamable-http',
+    url: 'http://0.0.0.0:43187/conformance/recovery-http-non-loopback',
+  });
+  assert.deepEqual(mcp.mcpServers['recovery-sse-non-loopback'], {
+    type: 'sse',
+    url: 'http://0.0.0.0:43187/conformance/recovery-sse-non-loopback',
+  });
   assert.deepEqual(mcp.mcpServers['recovery-http-fragment'], {
     type: 'streamable-http',
     url: 'http://127.0.0.1:43187/conformance/recovery-http-fragment#invalid-fragment',

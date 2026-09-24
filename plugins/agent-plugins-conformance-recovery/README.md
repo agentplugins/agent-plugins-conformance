@@ -17,12 +17,14 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.config.legacy-http-type` | A server using the legacy `http` transport type is excluded. |
 | `mcp.stdio.env.reserved-plugin-root` | A server that configures `PLUGIN_ROOT` in its `env` is excluded. |
 | `mcp.stdio.env.reserved-plugin-data` | A server that configures `PLUGIN_DATA` in its `env` is excluded. |
+| `mcp.streamable-http.url.non-loopback-http` | An HTTP server using plaintext HTTP with a non-loopback URL host is excluded. |
 | `mcp.streamable-http.url.relative` | An HTTP server with a scheme-relative URL (`//host/path`) is excluded. |
 | `mcp.streamable-http.url.fragment` | An HTTP server whose URL contains a fragment is excluded. |
 | `mcp.streamable-http.url.userinfo` | An HTTP server whose URL contains user information is excluded. |
 | `mcp.streamable-http.headers.duplicate-names` | An HTTP server with header names that duplicate one another under different casing is excluded. |
 | `mcp.streamable-http.headers.invalid-name` | An HTTP server with an invalid configured header name is excluded. |
 | `mcp.streamable-http.headers.invalid-value` | An HTTP server with an invalid configured header value is excluded. |
+| `mcp.sse.url.non-loopback-http` | A legacy HTTP+SSE server using plaintext HTTP with a non-loopback URL host is excluded. |
 | `mcp.sse.url.relative` | A legacy HTTP+SSE server with a scheme-relative URL (`//host/path`) is excluded. |
 | `mcp.sse.url.fragment` | A legacy HTTP+SSE server whose URL contains a fragment is excluded. |
 | `mcp.sse.url.userinfo` | A legacy HTTP+SSE server whose URL contains user information is excluded. |
