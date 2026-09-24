@@ -39,7 +39,7 @@ async function connect(files, server, { split = false, batch = false } = {}) {
   if (split) {
     if (process.platform === 'win32') {
       command = join(files.parent, 'bad command token launcher.cmd');
-      await writeFile(command, '@echo off\r\n.\\bin\\probe token.cmd %*\r\n');
+      await writeFile(command, '@echo off\r\n.\\bin\\probe token %*\r\n');
     } else {
       command = '/bin/sh';
       args = ['-c', `${configured.command} "$@"`, 'apc-command-token', ...configured.args];
@@ -48,7 +48,7 @@ async function connect(files, server, { split = false, batch = false } = {}) {
   if (batch) {
     // This helper has no shebang, so the SDK must exercise batch execution.
     command = join(files.parent, 'ordinary batch launcher.cmd');
-    await writeFile(command, '@call ".\\bin\\probe token.cmd" %*\r\n');
+    await writeFile(command, '@call ".\\bin\\probe token" %*\r\n');
   }
   const env = Object.fromEntries(Object.entries(process.env));
   for (const name of ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL']) delete env[name];
@@ -92,7 +92,7 @@ test('the copied Core fixture preserves the command token and configured argumen
 test('deliberate unquoted platform-shell parsing reaches the split-name decoy',
   { timeout: 30_000 }, async (t) => {
     const files = await fixture(t);
-    const tail = 'token.cmd';
+    const tail = 'token';
     const server = 'command-token';
     const observation = await observe(await connect(files, server, { split: true }));
     assert.equal(observation.kind, 'mcp-stdio');
@@ -112,9 +112,9 @@ test('explicit Windows batch execution preserves the spaced command and argument
     t.diagnostic(JSON.stringify({ launch: 'batch', stderr: files.diagnostics.join('') }));
   });
 
-test('Core packages executable polyglot wrappers', { skip: process.platform === 'win32' }, async () => {
+test('Core packages executable Unix wrappers', { skip: process.platform === 'win32' }, async () => {
   const root = new URL('../plugins/agent-plugins-conformance-core/bin/', import.meta.url);
-  for (const file of ['probe token.cmd', 'probe.cmd', 'probe']) {
+  for (const file of ['probe token', 'probe']) {
     assert.notEqual((await lstat(new URL(file, root))).mode & 0o111, 0);
   }
 });

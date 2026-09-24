@@ -163,7 +163,7 @@ try {
     }
     assert.deepEqual(actual, expected, `${name}: installed package differs from source`);
     if (name === 'agent-plugins-conformance-core' && process.platform !== 'win32') {
-      for (const file of ['bin/probe token.cmd', 'bin/probe', 'bin/probe.cmd']) {
+      for (const file of ['bin/probe token', 'bin/probe']) {
         assert.ok((await stat(join(installedPath, file))).mode & 0o111,
           `${file}: installed wrapper is not executable`);
       }

@@ -541,8 +541,8 @@ export function buildReport(input) {
   const commandEvidence = runtime.get('command-token');
   if (commandEvidence) {
     const args = commandEvidence.argv;
-    if (args[0] === 'command-token' && args[1] === 'decoy' && args[2] === 'token.cmd') {
-      set('mcp.stdio.command.single-token', 'fail', 'The decoy received token.cmd as an argument, showing that the command was split.');
+    if (args[0] === 'command-token' && args[1] === 'decoy' && args[2] === 'token') {
+      set('mcp.stdio.command.single-token', 'fail', 'The decoy received token as an argument, showing that the command was split.');
     } else if (args[0] === 'command-token' && args[1] === 'exact') {
       set('mcp.stdio.command.single-token', 'pass', 'The exact-name wrapper was selected.');
     }

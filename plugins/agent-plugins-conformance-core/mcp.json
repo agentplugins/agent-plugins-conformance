@@ -58,7 +58,7 @@
     },
     "command-token": {
       "type": "stdio",
-      "command": "./bin/probe token.cmd",
+      "command": "./bin/probe token",
       "args": [
         "arg with spaces",
         "",
