@@ -15,6 +15,7 @@ async function fixture(t) {
   const root = join(await realpath(parent), 'installed plugin with spaces');
   const clients = [];
   const diagnostics = [];
+  await writeFile(join(parent, 'package.json'), '{"type":"module"}\n');
   await cp(new URL('../plugins/agent-plugins-conformance-core/', import.meta.url), root, { recursive: true });
   t.after(async () => {
     try {
