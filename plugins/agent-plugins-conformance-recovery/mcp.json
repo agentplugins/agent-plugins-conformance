@@ -16,12 +16,12 @@
     "recovery-command-symlink-posix": {
       "type": "stdio",
       "command": "./escape-command-posix",
-      "args": ["node", "dist/probe.mjs", "recovery-command-symlink-posix"]
+      "args": ["node", "${PLUGIN_ROOT}/dist/probe.mjs", "recovery-command-symlink-posix"]
     },
     "recovery-command-symlink-windows": {
       "type": "stdio",
       "command": "./escape-command-windows.exe",
-      "args": ["/d", "/s", "/c", "node", "dist/probe.mjs", "recovery-command-symlink-windows"]
+      "args": ["/d", "/s", "/c", "node", "${PLUGIN_ROOT}/dist/probe.mjs", "recovery-command-symlink-windows"]
     },
     "recovery-cwd-invalid-form": {
       "type": "stdio",

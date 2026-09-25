@@ -7224,7 +7224,7 @@ function inspectCommandSymlink(root2) {
       result.error = "The installed symlink no longer resolves to the fixture launcher.";
       return result;
     }
-    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", "dist/probe.mjs", server2, "--command-control"];
+    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", `${root2}/dist/probe.mjs`, server2, "--command-control"];
     const child = spawnSync(launcher, args, { cwd: root2, encoding: "utf8", timeout: 1e4, windowsHide: true });
     result.control = child.status === 0 && child.stdout === "APC_COMMAND_SYMLINK_CONTROL_V1";
     if (!result.control) result.error = child.error?.message ?? `Exit ${child.status ?? child.signal}: ${child.stderr ?? ""}`;

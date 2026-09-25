@@ -247,8 +247,9 @@ try {
 
   const targetRecord = await pathRecord(target);
   if (process.platform === 'win32') summary.windowsDiagnostics = await runWindowsDiagnostics(target);
+  const resolvedLauncher = ['file', 'symlink'].includes(targetRecord.kind) ? await realpath(target) : target;
   summary.control = {
-    executable: target,
+    executable: resolvedLauncher,
     args: [...args, '--command-control'],
     cwd: copiedRoot,
     target: targetRecord,
@@ -256,7 +257,7 @@ try {
   if (!['file', 'symlink'].includes(targetRecord.kind)) {
     summary.reason = 'The platform launcher target is unavailable.';
   } else {
-    const control = await run(target, summary.control.args, { cwd: copiedRoot });
+    const control = await run(resolvedLauncher, summary.control.args, { cwd: copiedRoot });
     await Promise.all([
       writeFile(join(output, `${candidate.server}.control.stdout.log`), control.stdout),
       writeFile(join(output, `${candidate.server}.control.stderr.log`), control.stderr),
