@@ -12,6 +12,7 @@ Install it alongside the other suite plugins and follow the [run instructions](.
 | `mcp.stdio.cwd.plugin-relative-escape` | A server whose plugin-relative working directory escapes the plugin root is excluded. |
 | `mcp.stdio.cwd.plugin-data-escape` | A server whose data-rooted working directory escapes the plugin data directory is excluded. |
 | `filesystem.containment.cwd-symlink-escape` | A server whose working directory escapes the plugin root through a symlink is excluded. |
+| `filesystem.containment.mcp-command-symlink-escape` | An MCP server whose command resolves outside the plugin root through a symlink is excluded. |
 | `mcp.stdio.config.unknown-field` | A server with an unknown configuration field is excluded. |
 | `mcp.config.missing-type` | A server without an explicit transport type is excluded. |
 | `mcp.config.legacy-http-type` | A server using the legacy `http` transport type is excluded. |
