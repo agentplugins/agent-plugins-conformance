@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -18,6 +18,9 @@ assert.ok(codex && isAbsolute(codex) && extra.length === 0,
 const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'agent-plugins-conformance-recovery'];
 const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
+const commandSymlinkServers = ['recovery-command-symlink-posix', 'recovery-command-symlink-windows'];
+const commandSymlinkServer = `recovery-command-symlink-${commandPlatform}`;
+const commandSymlinkCase = 'filesystem.containment.command-symlink-escape';
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
   'recovery-sse-non-loopback', 'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
@@ -25,7 +28,7 @@ const invalidSseServers = [
 ];
 // Redirect refusal requires the guiding agent to interpret and preserve the native error.
 const coveredCases = CASE_IDS.filter((id) => (id.startsWith('mcp.') || id.startsWith('filesystem.')) &&
-  id !== 'mcp.streamable-http.headers.cross-origin-redirect' && !id.startsWith('mcp.sse.'));
+  id !== 'mcp.streamable-http.headers.cross-origin-redirect' && id !== commandSymlinkCase && !id.startsWith('mcp.sse.'));
 const temporary = await realpath(await mkdtemp(join(tmpdir(), 'apc codex smoke ')));
 const home = join(temporary, 'codex-home');
 const workspace = join(temporary, 'workspace');
@@ -35,6 +38,8 @@ const env = Object.fromEntries(Object.entries(process.env)
   .filter(([key]) => !/OPENAI|CODEX|CHATGPT|^APC_|^PLUGIN_|^PATH$/i.test(key)));
 env.CODEX_HOME = home;
 env.PATH = `${dirname(process.execPath)}${delimiter}${searchPath}`;
+env.RUST_LOG = 'warn';
+env.LOG_FORMAT = 'json';
 let appServer;
 let stderr;
 let httpServer;
@@ -62,6 +67,28 @@ async function hashes(directory) {
   return Promise.all(files.map(async ({ path, symlink }) => [relative(directory, path),
     symlink ? 'symlink' : 'file',
     symlink ? await readlink(path) : createHash('sha256').update(await readFile(path)).digest('hex')]));
+}
+
+async function linkState(directory, name) {
+  const path = join(directory, name);
+  try {
+    const entry = await lstat(path);
+    if (!entry.isSymbolicLink()) return { kind: 'other', target: null, resolvedTarget: null };
+    const target = await readlink(path);
+    let resolvedTarget = null;
+    try { resolvedTarget = await realpath(path); } catch { /* Preserve dangling-link evidence. */ }
+    return { kind: 'symlink', target, resolvedTarget };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { kind: 'missing', target: null, resolvedTarget: null };
+    return { kind: 'unavailable', target: null, resolvedTarget: null, error: error.message };
+  }
+}
+
+function installationOutcome(source, installed) {
+  if (source.kind !== 'symlink') return 'source-not-symlink';
+  if (installed.kind === 'missing') return 'removed';
+  if (installed.kind !== 'symlink') return 'materialized';
+  return source.target === installed.target ? 'retained' : 'rewritten';
 }
 
 function failProtocol(error) {
@@ -159,8 +186,27 @@ try {
     if (name === 'agent-plugins-conformance-recovery') {
       assert.deepEqual(original.find(([path]) => path === 'escape-link'), ['escape-link', 'symlink', '..'],
         'The source fixture must contain the escaping symlink');
-      // Removing the escaping link during installation is an allowed containment outcome.
-      if (!actual.some(([path]) => path === 'escape-link')) expected = original.filter(([path]) => path !== 'escape-link');
+      const links = await Promise.all(['escape-link', 'escape-command-posix', 'escape-command-windows.exe']
+        .map(async (link) => {
+          const [source, installed] = await Promise.all([linkState(join(root, 'plugins', name), link), linkState(installedPath, link)]);
+          return {
+            link,
+            applicable: link === (process.platform === 'win32' ? 'escape-command-windows.exe' : 'escape-command-posix'),
+            source,
+            installed,
+            installationOutcome: installationOutcome(source, installed),
+            rewrittenTarget: source.kind === 'symlink' && installed.kind === 'symlink' && source.target !== installed.target
+              ? installed.target : null,
+          };
+        }));
+      await writeFile(join(output, 'installation-link-state.json'), `${JSON.stringify({
+        schemaVersion: 1, platform: commandPlatform, links,
+      }, null, 2)}\n`);
+      // Removing any escaping link during installation is an allowed containment outcome.
+      const removed = new Set(links
+        .filter(({ source, installed }) => source.kind === 'symlink' && installed.kind === 'missing')
+        .map(({ link }) => link));
+      expected = original.filter(([path]) => !removed.has(path));
     }
     assert.deepEqual(actual, expected, `${name}: installed package differs from source`);
     if (name === 'agent-plugins-conformance-core' && process.platform !== 'win32') {
@@ -209,13 +255,13 @@ try {
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
-  for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field', 'recovery-missing-type',
+  for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', ...commandSymlinkServers, 'recovery-unknown-field', 'recovery-missing-type',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-non-loopback', 'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
     'recovery-http-header-name', 'recovery-http-header-value', 'recovery-http-type', ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
-    const symlinkStartupFailure = server === 'recovery-cwd-symlink-escape' &&
+    const symlinkStartupFailure = ['recovery-cwd-symlink-escape', ...commandSymlinkServers].includes(server) &&
       entry?.runtimeStatus === 'failed' && Object.keys(entry.tools).length === 0;
     if (advertised) advertisedInvalidServers.push(server);
     if (advertised || !entry || symlinkStartupFailure || (entry.runtimeStatus === 'connected' && entry.toolsError === null)) {
@@ -291,6 +337,23 @@ try {
   assert.equal(report.summary.fail, 0, `Report contains failed cases: ${JSON.stringify(report.summary)}`);
   for (const id of coveredCases) {
     assert.equal(report.results.find((result) => result.id === id)?.status, 'pass', `${id} did not pass`);
+  }
+  const commandSymlinkResult = report.results.find(({ id }) => id === commandSymlinkCase);
+  assert.ok(commandSymlinkResult, `${commandSymlinkCase}: missing report result`);
+  const commandSymlink = report.observations
+    .find(({ kind, server }) => kind === 'mcp-stdio' && server === 'recovery-valid')?.evidence?.commandSymlink;
+  const commandSymlinkDiscovery = report.observations
+    .find(({ kind, server }) => kind === 'mcp-discovery' && server === commandSymlinkServer);
+  const installationLinks = JSON.parse(await readFile(join(output, 'installation-link-state.json'), 'utf8')).links;
+  const sourceLink = installationLinks.find(({ applicable }) => applicable)?.source;
+  const conclusive = sourceLink?.kind === 'symlink' && commandSymlinkDiscovery?.advertised === false &&
+    (commandSymlink?.link === 'missing' ||
+      (commandSymlink?.link === 'symlink' && commandSymlink.control === true && commandSymlink.target !== null));
+  assert.equal(commandSymlinkResult.status, conclusive ? 'pass' : 'not_verified',
+    `${commandSymlinkCase}: unexpected native outcome`);
+  if (commandSymlinkResult.status === 'not_verified') {
+    console.log(`${commandSymlinkCase} not verified: ${commandSymlinkResult.detail}`);
+    console.log(`Source and native evidence: ${JSON.stringify({ sourceLink, commandSymlink })}`);
   }
   console.log(`Native Codex smoke passed: ${coveredCases.length} Core and Recovery cases; ${report.summary.not_verified} not verified.`);
   console.log(`Report: ${reportPath}`);

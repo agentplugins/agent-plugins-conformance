@@ -1,0 +1,82 @@
+name: Command symlink prototype
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/command-symlink-prototype]
+
+permissions:
+  contents: read
+
+jobs:
+  reference:
+    name: Reference (${{ matrix.os }}, Node ${{ matrix.node }})
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Enable symlink checkout
+        shell: bash
+        run: git config --global core.symlinks true
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Exercise command symlink fixtures
+        run: node scripts/command-symlink-reference.mjs
+      - run: pnpm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: command-symlink-reference-${{ matrix.os }}-node-${{ matrix.node }}
+          path: reports/command-symlink-reference/
+
+  codex:
+    name: Native Codex (${{ matrix.os }})
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Enable symlink checkout
+        shell: bash
+        run: git config --global core.symlinks true
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+      - name: Install pinned Codex
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CODEX_VERSION: 0.155.1
+        run: |
+          case "$RUNNER_OS:$RUNNER_ARCH" in
+            Linux:X64) CODEX_BINARY=codex-x86_64-unknown-linux-musl ;;
+            Linux:ARM64) CODEX_BINARY=codex-aarch64-unknown-linux-musl ;;
+            macOS:X64) CODEX_BINARY=codex-x86_64-apple-darwin ;;
+            macOS:ARM64) CODEX_BINARY=codex-aarch64-apple-darwin ;;
+            Windows:X64) CODEX_BINARY=codex-x86_64-pc-windows-msvc.exe ;;
+            Windows:ARM64) CODEX_BINARY=codex-aarch64-pc-windows-msvc.exe ;;
+            *) echo "Unsupported runner architecture: $RUNNER_OS:$RUNNER_ARCH" >&2; exit 1 ;;
+          esac
+          curl --fail --location "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_BINARY}.tar.gz" --output codex.tar.gz
+          tar -xzf codex.tar.gz
+          echo "CODEX_BINARY=$CODEX_BINARY" >> "$GITHUB_ENV"
+      - name: Check native loading and reporting
+        shell: bash
+        run: node scripts/smoke-codex.mjs "$RUNNER_TEMP/$CODEX_BINARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: command-symlink-codex-${{ matrix.os }}
+          path: reports/codex/

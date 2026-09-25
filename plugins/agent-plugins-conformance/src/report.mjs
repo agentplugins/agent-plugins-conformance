@@ -36,7 +36,8 @@ const INVALID_SSE_SERVERS = Object.freeze({
   'recovery-sse-header-name': 'mcp.sse.headers.invalid-name',
   'recovery-sse-header-value': 'mcp.sse.headers.invalid-value',
 });
-const INVALID_STDIO_SERVER_NAMES = Object.keys(INVALID_STDIO_SERVERS);
+const COMMAND_SYMLINK_SERVERS = ['recovery-command-symlink-posix', 'recovery-command-symlink-windows'];
+const INVALID_STDIO_SERVER_NAMES = [...Object.keys(INVALID_STDIO_SERVERS), ...COMMAND_SYMLINK_SERVERS];
 const RECOVERY_INVALID_SERVER_NAMES = [
   ...INVALID_STDIO_SERVER_NAMES, ...Object.keys(INVALID_HTTP_SERVERS), ...Object.keys(INVALID_SSE_SERVERS),
 ];
@@ -250,7 +251,7 @@ export function validateInput(input, { recording = false } = {}) {
           ? ['version', 'server', 'root', 'cwd']
           : ['version', 'server', 'root', 'cwd', 'resolvedData', 'argv', 'env'];
       if (observation.server === 'default') keys.push('dataWrite');
-      object(evidence, observation.server === 'recovery-valid' ? [...keys, 'symlinkCwd'] : keys, keys, evidenceAt);
+      object(evidence, observation.server === 'recovery-valid' ? [...keys, 'symlinkCwd', 'commandSymlink'] : keys, keys, evidenceAt);
       if (evidence.version !== 1) invalid(`${evidenceAt}.version`, 'expected 1');
       if (evidence.server !== observation.server) invalid(`${evidenceAt}.server`, 'must match observation.server');
       if (INVALID_STDIO_SERVER_NAMES.includes(observation.server)) {
@@ -268,6 +269,21 @@ export function validateInput(input, { recording = false } = {}) {
       if (observation.server === 'recovery-valid') {
         if (Object.hasOwn(evidence, 'symlinkCwd') && evidence.symlinkCwd !== null) {
           member(evidence.symlinkCwd, ['symlink', 'missing', 'other'], `${evidenceAt}.symlinkCwd`);
+        }
+        if (Object.hasOwn(evidence, 'commandSymlink')) {
+          const info = evidence.commandSymlink;
+          const where = `${evidenceAt}.commandSymlink`;
+          const fields = ['server', 'link', 'root', 'target', 'control', 'error'];
+          object(info, fields, fields, where);
+          member(info.server, COMMAND_SYMLINK_SERVERS, `${where}.server`);
+          member(info.link, ['symlink', 'missing', 'other', null], `${where}.link`);
+          for (const field of ['root', 'target']) {
+            if (field === 'target' && info[field] === null) continue;
+            string(info[field], `${where}.${field}`);
+            if (!pathFlavor(info[field])) invalid(`${where}.${field}`, 'expected an absolute path');
+          }
+          if (typeof info.control !== 'boolean') invalid(`${where}.control`, 'expected a boolean');
+          nullableString(info.error, `${where}.error`);
         }
         runtime.set(observation.server, evidence);
         continue;
@@ -608,6 +624,29 @@ export function buildReport(input) {
       set(id, 'not_verified', `Missing MCP discovery observation for ${server}.`);
     }
   }
+  {
+    const id = 'filesystem.containment.command-symlink-escape';
+    const exposed = COMMAND_SYMLINK_SERVERS.find((server) => runtime.has(server) || invalidServerDiscovery.get(server) === true);
+    const info = runtime.get('recovery-valid')?.commandSymlink;
+    if (exposed) {
+      set(id, 'fail', `The client exposed the ${exposed} probe configured through an escaping executable symlink.`);
+    } else if (!info) {
+      set(id, 'not_verified', 'Missing executable-symlink inspection and independent launcher control.');
+    } else {
+      const flavor = pathFlavor(info.root);
+      const relativeTarget = pathFlavor(info.target) === flavor ? flavor.relative(info.root, info.target) : null;
+      const outside = relativeTarget !== null && (relativeTarget === '..' || relativeTarget.startsWith(`..${flavor.sep}`) || flavor.isAbsolute(relativeTarget));
+      if (info.link !== 'missing' && (info.link !== 'symlink' || !info.control || !outside)) {
+        set(id, 'not_verified', 'The executable-symlink fixture or external launcher control was not usable.');
+      } else if (invalidServerDiscovery.get(info.server) !== false) {
+        set(id, 'not_verified', `Missing complete discovery evidence for ${info.server}.`);
+      } else {
+        set(id, 'pass', info.link === 'missing'
+          ? `The client excluded ${info.server} and the installed executable link was removed.`
+          : `The client excluded ${info.server} while the independent external launcher control worked.`);
+      }
+    }
+  }
   for (const [server, id] of Object.entries(INVALID_HTTP_SERVERS)) {
     const observation = http.get(server);
     const advertised = invalidServerDiscovery.get(server);
@@ -742,6 +781,7 @@ export function buildReport(input) {
           return { kind: 'mcp-stdio', server, evidence: {
             version: evidence.version, server: evidence.server, resolvedData: evidence.resolvedData,
             ...(Object.hasOwn(evidence, 'symlinkCwd') ? { symlinkCwd: evidence.symlinkCwd } : {}),
+            ...(Object.hasOwn(evidence, 'commandSymlink') ? { commandSymlink: { ...evidence.commandSymlink } } : {}),
           } };
         }
         if (INVALID_STDIO_SERVER_NAMES.includes(server)) {

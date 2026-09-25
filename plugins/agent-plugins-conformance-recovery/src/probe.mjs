@@ -1,5 +1,6 @@
 import { lstatSync, realpathSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
+import { inspectCommandSymlink } from './command-symlink.mjs';
 import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -12,9 +13,13 @@ if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
 const identity = [
   'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', 'recovery-unknown-field',
   'recovery-env-plugin-root', 'recovery-env-plugin-data', 'recovery-cwd-invalid-form',
-  'recovery-missing-type',
+  'recovery-missing-type', 'recovery-command-symlink-posix', 'recovery-command-symlink-windows',
 ].includes(process.argv[2])
   ? process.argv[2] : 'recovery-valid';
+if (process.argv.includes('--command-control')) {
+  process.stdout.write('APC_COMMAND_SYMLINK_CONTROL_V1');
+  process.exit(0);
+}
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 function inspectSymlinkCwd() {
   try {
@@ -42,7 +47,7 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       throw new Error('observe requires an empty object');
     }
     const observation = identity === 'recovery-valid'
-      ? { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: inspectSymlinkCwd() } }
+      ? { kind: 'mcp-stdio', server: 'recovery-valid', evidence: { version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: inspectSymlinkCwd(), commandSymlink: inspectCommandSymlink(root) } }
       : {
           kind: 'mcp-stdio',
           server: identity,

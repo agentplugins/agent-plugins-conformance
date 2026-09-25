@@ -7200,8 +7200,35 @@ var require_dist = __commonJS({
 });
 
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
+import { lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
+import { isAbsolute, join as join2 } from "node:path";
+
+// plugins/agent-plugins-conformance-recovery/src/command-symlink.mjs
 import { lstatSync, realpathSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+function inspectCommandSymlink(root2) {
+  const windows = process.platform === "win32";
+  const server2 = `recovery-command-symlink-${windows ? "windows" : "posix"}`;
+  const result = { server: server2, link: null, root: root2, target: null, control: false, error: null };
+  try {
+    result.link = lstatSync(join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix")).isSymbolicLink() ? "symlink" : "other";
+  } catch (error2) {
+    if (error2.code === "ENOENT") result.link = "missing";
+  }
+  try {
+    result.target = realpathSync.native(windows ? "C:/Windows/System32/cmd.exe" : "/usr/bin/env");
+    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", join(root2, "dist/probe.mjs"), server2, "--command-control"];
+    const child = spawnSync(result.target, args, { cwd: root2, encoding: "utf8", timeout: 1e4, windowsHide: true });
+    result.control = child.status === 0 && child.stdout === "APC_COMMAND_SYMLINK_CONTROL_V1";
+    if (!result.control) result.error = child.error?.message ?? `Exit ${child.status ?? child.signal}: ${child.stderr ?? ""}`;
+  } catch (error2) {
+    result.error = error2.message;
+  }
+  return result;
+}
+
+// plugins/agent-plugins-conformance-recovery/src/probe.mjs
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
@@ -16932,7 +16959,7 @@ var StdioServerTransport = class {
 var resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try {
-    resolvedData = realpathSync.native(process.env.PLUGIN_DATA);
+    resolvedData = realpathSync2.native(process.env.PLUGIN_DATA);
   } catch {
   }
 }
@@ -16944,12 +16971,18 @@ var identity = [
   "recovery-env-plugin-root",
   "recovery-env-plugin-data",
   "recovery-cwd-invalid-form",
-  "recovery-missing-type"
+  "recovery-missing-type",
+  "recovery-command-symlink-posix",
+  "recovery-command-symlink-windows"
 ].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
-var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
+if (process.argv.includes("--command-control")) {
+  process.stdout.write("APC_COMMAND_SYMLINK_CONTROL_V1");
+  process.exit(0);
+}
+var root = realpathSync2.native(fileURLToPath(new URL("..", import.meta.url)));
 function inspectSymlinkCwd() {
   try {
-    return lstatSync(join(root, "escape-link")).isSymbolicLink() ? "symlink" : "other";
+    return lstatSync2(join2(root, "escape-link")).isSymbolicLink() ? "symlink" : "other";
   } catch (error2) {
     return error2.code === "ENOENT" ? "missing" : null;
   }
@@ -16972,14 +17005,14 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
       throw new Error("observe requires an empty object");
     }
-    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, symlinkCwd: inspectSymlinkCwd() } } : {
+    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, symlinkCwd: inspectSymlinkCwd(), commandSymlink: inspectCommandSymlink(root) } } : {
       kind: "mcp-stdio",
       server: identity,
       evidence: {
         version: 1,
         server: identity,
         root,
-        cwd: realpathSync.native(process.cwd())
+        cwd: realpathSync2.native(process.cwd())
       }
     };
     return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };
