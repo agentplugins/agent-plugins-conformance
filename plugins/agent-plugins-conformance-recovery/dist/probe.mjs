@@ -3875,49 +3875,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        relative2 = parse3(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3925,7 +3925,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7200,8 +7200,8 @@ var require_dist = __commonJS({
 });
 
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
-import { lstatSync, realpathSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { lstatSync as lstatSync2, realpathSync as realpathSync2 } from "node:fs";
+import { isAbsolute, join as join2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@4.6.4/node_modules/zod/v4/core/util.js
@@ -16928,11 +16928,42 @@ var StdioServerTransport = class {
   }
 };
 
+// plugins/agent-plugins-conformance-recovery/src/command-symlink.mjs
+import { lstatSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join, relative } from "node:path";
+function inspectCommandSymlink(root2) {
+  const windows = process.platform === "win32";
+  const server2 = `recovery-command-symlink-${windows ? "windows" : "posix"}`;
+  const result = { server: server2, link: null, root: root2, target: null, control: false, error: null };
+  const linkPath = join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix");
+  try {
+    result.link = lstatSync(linkPath).isSymbolicLink() ? "symlink" : "other";
+  } catch (error2) {
+    if (error2.code === "ENOENT") result.link = "missing";
+  }
+  try {
+    if (result.link === "symlink") result.target = realpathSync.native(linkPath);
+    const launcher = realpathSync.native(windows ? "C:/Windows/System32/cmd.exe" : "/usr/bin/env");
+    if (result.link === "symlink" && relative(launcher, result.target) !== "") {
+      result.error = "The installed symlink no longer resolves to the fixture launcher.";
+      return result;
+    }
+    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", `${root2}/dist/probe.mjs`, server2, "--command-control"];
+    const child = spawnSync(launcher, args, { cwd: root2, encoding: "utf8", timeout: 1e4, windowsHide: true });
+    result.control = child.status === 0 && child.stdout === "APC_COMMAND_SYMLINK_CONTROL_V1";
+    if (!result.control) result.error = child.error?.message ?? `Exit ${child.status ?? child.signal}: ${child.stderr ?? ""}`;
+  } catch (error2) {
+    result.error = error2.message;
+  }
+  return result;
+}
+
 // plugins/agent-plugins-conformance-recovery/src/probe.mjs
 var resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try {
-    resolvedData = realpathSync.native(process.env.PLUGIN_DATA);
+    resolvedData = realpathSync2.native(process.env.PLUGIN_DATA);
   } catch {
   }
 }
@@ -16944,12 +16975,18 @@ var identity = [
   "recovery-env-plugin-root",
   "recovery-env-plugin-data",
   "recovery-cwd-invalid-form",
-  "recovery-missing-type"
+  "recovery-missing-type",
+  "recovery-command-symlink-posix",
+  "recovery-command-symlink-windows"
 ].includes(process.argv[2]) ? process.argv[2] : "recovery-valid";
-var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
+if (process.argv.includes("--command-control")) {
+  process.stdout.write("APC_COMMAND_SYMLINK_CONTROL_V1");
+  process.exit(0);
+}
+var root = realpathSync2.native(fileURLToPath(new URL("..", import.meta.url)));
 function inspectSymlinkCwd() {
   try {
-    return lstatSync(join(root, "escape-link")).isSymbolicLink() ? "symlink" : "other";
+    return lstatSync2(join2(root, "escape-link")).isSymbolicLink() ? "symlink" : "other";
   } catch (error2) {
     return error2.code === "ENOENT" ? "missing" : null;
   }
@@ -16972,14 +17009,14 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
     if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).length !== 0) {
       throw new Error("observe requires an empty object");
     }
-    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, symlinkCwd: inspectSymlinkCwd() } } : {
+    const observation = identity === "recovery-valid" ? { kind: "mcp-stdio", server: "recovery-valid", evidence: { version: 1, server: "recovery-valid", resolvedData, symlinkCwd: inspectSymlinkCwd(), commandSymlink: inspectCommandSymlink(root) } } : {
       kind: "mcp-stdio",
       server: identity,
       evidence: {
         version: 1,
         server: identity,
         root,
-        cwd: realpathSync.native(process.cwd())
+        cwd: realpathSync2.native(process.cwd())
       }
     };
     return { content: [{ type: "text", text: JSON.stringify(observation) }], structuredContent: observation };

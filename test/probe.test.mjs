@@ -94,7 +94,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
-  assert.equal(direct.summary.not_verified, 40);
+  assert.equal(direct.summary.not_verified, 41);
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {
@@ -113,6 +113,9 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   const resolvedRoot = await realpath(root);
   const resolvedData = await realpath(data);
   const outsideCwd = await realpath(parent);
+  const commandSymlinkServer = `recovery-command-symlink-${process.platform === 'win32' ? 'windows' : 'posix'}`;
+  const commandSymlinkTarget = await realpath(process.platform === 'win32'
+    ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env');
   assert.equal((await lstat(join(root, 'escape-link'))).isSymbolicLink(), true);
   assert.equal(await readlink(join(root, 'escape-link')), '..');
   assert.equal(await realpath(join(root, 'escape-link')), outsideCwd);
@@ -160,7 +163,13 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
   const response = await observe(client);
   const observation = {
     kind: 'mcp-stdio', server: 'recovery-valid',
-    evidence: { version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: 'symlink' },
+    evidence: {
+      version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: 'symlink',
+      commandSymlink: {
+        server: commandSymlinkServer, link: 'symlink', root: resolvedRoot,
+        target: commandSymlinkTarget, control: true, error: null,
+      },
+    },
   };
   assert.deepEqual(response, observation);
   assert.equal(buildReport(input([observation])).results
