@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS } from '../plugins/agent-plugins-conformance/src/cases.mjs';
@@ -73,7 +73,9 @@ async function linkState(directory, name) {
   const path = join(directory, name);
   try {
     const entry = await lstat(path);
-    if (!entry.isSymbolicLink()) return { kind: 'other', target: null, resolvedTarget: null };
+    if (!entry.isSymbolicLink()) {
+      return { kind: entry.isFile() ? 'file' : 'other', target: null, resolvedTarget: null };
+    }
     const target = await readlink(path);
     let resolvedTarget = null;
     try { resolvedTarget = await realpath(path); } catch { /* Preserve dangling-link evidence. */ }
@@ -255,12 +257,16 @@ try {
   await writeFile(join(output, 'mcp-status.json'), `${JSON.stringify(status, null, 2)}\n`);
   assert.equal(status.nextCursor, null, 'Expected a complete native MCP inventory');
   const advertisedInvalidServers = [];
+  const connectedCommandSymlinkServers = [];
   for (const server of ['recovery-cwd-invalid-form', 'recovery-cwd-escape', 'recovery-cwd-data-escape', 'recovery-cwd-symlink-escape', ...commandSymlinkServers, 'recovery-unknown-field', 'recovery-missing-type',
     'recovery-env-plugin-root', 'recovery-env-plugin-data',
     'recovery-http-non-loopback', 'recovery-http-relative-url', 'recovery-http-fragment', 'recovery-http-userinfo', 'recovery-http-duplicate-headers',
     'recovery-http-header-name', 'recovery-http-header-value', 'recovery-http-type', ...invalidSseServers]) {
     const entry = status.data.find(({ name }) => name === server);
     const advertised = entry !== undefined && Object.hasOwn(entry.tools, 'observe');
+    if (commandSymlinkServers.includes(server) && entry?.runtimeStatus === 'connected') {
+      connectedCommandSymlinkServers.push(server);
+    }
     const symlinkStartupFailure = ['recovery-cwd-symlink-escape', ...commandSymlinkServers].includes(server) &&
       entry?.runtimeStatus === 'failed' && Object.keys(entry.tools).length === 0;
     if (advertised) advertisedInvalidServers.push(server);
@@ -345,12 +351,23 @@ try {
   const commandSymlinkDiscovery = report.observations
     .find(({ kind, server }) => kind === 'mcp-discovery' && server === commandSymlinkServer);
   const installationLinks = JSON.parse(await readFile(join(output, 'installation-link-state.json'), 'utf8')).links;
-  const sourceLink = installationLinks.find(({ applicable }) => applicable)?.source;
+  const applicableLink = installationLinks.find(({ applicable }) => applicable);
+  const sourceLink = applicableLink?.source;
+  const installedLink = applicableLink?.installed;
+  const resolvedTargetRelative = commandSymlink?.root && installedLink?.resolvedTarget
+    ? relative(commandSymlink.root, installedLink.resolvedTarget) : null;
+  const installedTargetOutside = resolvedTargetRelative !== null &&
+    (resolvedTargetRelative === '..' || resolvedTargetRelative.startsWith(`..${sep}`) || isAbsolute(resolvedTargetRelative));
+  const installedTargetMatchesControl = commandSymlink?.target && installedLink?.resolvedTarget
+    ? relative(commandSymlink.target, installedLink.resolvedTarget) === '' : false;
   const conclusive = sourceLink?.kind === 'symlink' && commandSymlinkDiscovery?.advertised === false &&
-    (commandSymlink?.link === 'missing' ||
-      (commandSymlink?.link === 'symlink' && commandSymlink.control === true && commandSymlink.target !== null));
+    ((commandSymlink?.link === 'missing' && installedLink?.kind === 'missing') ||
+      (commandSymlink?.link === 'symlink' && installedLink?.kind === 'symlink' && commandSymlink.control === true &&
+        installedTargetOutside && installedTargetMatchesControl));
   assert.equal(commandSymlinkResult.status, conclusive ? 'pass' : 'not_verified',
     `${commandSymlinkCase}: unexpected native outcome`);
+  assert.deepEqual(connectedCommandSymlinkServers, [],
+    `Native runtime connected through escaping executable symlinks: ${connectedCommandSymlinkServers.join(', ')}`);
   if (commandSymlinkResult.status === 'not_verified') {
     console.log(`${commandSymlinkCase} not verified: ${commandSymlinkResult.detail}`);
     console.log(`Source and native evidence: ${JSON.stringify({ sourceLink, commandSymlink })}`);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -110,6 +110,51 @@ function expand(value) {
   return value.replaceAll('${PLUGIN_ROOT}', copiedRoot);
 }
 
+async function runWindowsDiagnostics(target) {
+  const originalScript = `${copiedRoot}/dist/probe.mjs`;
+  const originalArgs = ['/d', '/s', '/c', 'node', originalScript, candidate.server, '--command-control'];
+  const variants = [
+    { name: 'original', executable: target, args: originalArgs },
+    {
+      name: 'native-backslash-script',
+      executable: target,
+      args: ['/d', '/s', '/c', 'node', win32.join(copiedRoot, 'dist', 'probe.mjs'), candidate.server, '--command-control'],
+    },
+    {
+      name: 'relative-script',
+      executable: target,
+      args: ['/d', '/s', '/c', 'node', 'dist/probe.mjs', candidate.server, '--command-control'],
+    },
+    { name: 'native-backslash-target', executable: win32.normalize(target), args: originalArgs },
+  ];
+  const results = await Promise.all(variants.map(async ({ name, executable, args }) => {
+    const result = await run(executable, args, { cwd: copiedRoot });
+    const stdoutArtifact = `windows-${name}.stdout.log`;
+    const stderrArtifact = `windows-${name}.stderr.log`;
+    await Promise.all([
+      writeFile(join(output, stdoutArtifact), result.stdout),
+      writeFile(join(output, stderrArtifact), result.stderr),
+    ]);
+    return {
+      name,
+      executable,
+      args,
+      cwd: copiedRoot,
+      stdoutArtifact,
+      stderrArtifact,
+      result: {
+        code: result.code,
+        signal: result.signal,
+        timedOut: result.timedOut,
+        error: result.error,
+        marker: result.stdout.toString('utf8').trim() === marker,
+      },
+    };
+  }));
+  await writeFile(join(output, 'windows-diagnostics.json'), `${JSON.stringify(results, null, 2)}\n`);
+  return results;
+}
+
 async function runMcp(executable, args, name) {
   const stdin = [];
   const stdout = [];
@@ -175,6 +220,7 @@ const summary = {
     mcpStdin: `${candidate.server}.mcp.stdin.jsonl`,
     mcpStdout: `${candidate.server}.mcp.stdout.jsonl`,
     mcpStderr: `${candidate.server}.mcp.stderr.log`,
+    ...(process.platform === 'win32' ? { windowsDiagnostics: 'windows-diagnostics.json' } : {}),
   },
   status: 'not_verified',
 };
@@ -200,6 +246,7 @@ try {
   summary.candidate.copied = await pathRecord(executable);
 
   const targetRecord = await pathRecord(target);
+  if (process.platform === 'win32') summary.windowsDiagnostics = await runWindowsDiagnostics(target);
   summary.control = {
     executable: target,
     args: [...args, '--command-control'],

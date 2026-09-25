@@ -3875,49 +3875,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative, options, skipNormalization) {
+    function resolveComponent(base, relative2, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse3(serialize(base, options), options);
-        relative = parse3(serialize(relative, options), options);
+        relative2 = parse3(serialize(relative2, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (!options.tolerant && relative2.scheme) {
+        target.scheme = relative2.scheme;
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
+        if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+          target.userinfo = relative2.userinfo;
+          target.host = relative2.host;
+          target.port = relative2.port;
+          target.path = removeDotSegments(relative2.path || "");
+          target.query = relative2.query;
         } else {
-          if (!relative.path) {
+          if (!relative2.path) {
             target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
+            if (relative2.query !== void 0) {
+              target.query = relative2.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
+            if (relative2.path[0] === "/") {
+              target.path = removeDotSegments(relative2.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
+                target.path = "/" + relative2.path;
               } else if (!base.path) {
-                target.path = relative.path;
+                target.path = relative2.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative.query;
+            target.query = relative2.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3925,7 +3925,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative.fragment;
+      target.fragment = relative2.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7206,20 +7206,26 @@ import { isAbsolute, join as join2 } from "node:path";
 // plugins/agent-plugins-conformance-recovery/src/command-symlink.mjs
 import { lstatSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 function inspectCommandSymlink(root2) {
   const windows = process.platform === "win32";
   const server2 = `recovery-command-symlink-${windows ? "windows" : "posix"}`;
   const result = { server: server2, link: null, root: root2, target: null, control: false, error: null };
+  const linkPath = join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix");
   try {
-    result.link = lstatSync(join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix")).isSymbolicLink() ? "symlink" : "other";
+    result.link = lstatSync(linkPath).isSymbolicLink() ? "symlink" : "other";
   } catch (error2) {
     if (error2.code === "ENOENT") result.link = "missing";
   }
   try {
-    result.target = realpathSync.native(windows ? "C:/Windows/System32/cmd.exe" : "/usr/bin/env");
-    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", join(root2, "dist/probe.mjs"), server2, "--command-control"];
-    const child = spawnSync(result.target, args, { cwd: root2, encoding: "utf8", timeout: 1e4, windowsHide: true });
+    if (result.link === "symlink") result.target = realpathSync.native(linkPath);
+    const launcher = realpathSync.native(windows ? "C:/Windows/System32/cmd.exe" : "/usr/bin/env");
+    if (result.link === "symlink" && relative(launcher, result.target) !== "") {
+      result.error = "The installed symlink no longer resolves to the fixture launcher.";
+      return result;
+    }
+    const args = [...windows ? ["/d", "/s", "/c"] : [], "node", "dist/probe.mjs", server2, "--command-control"];
+    const child = spawnSync(launcher, args, { cwd: root2, encoding: "utf8", timeout: 1e4, windowsHide: true });
     result.control = child.status === 0 && child.stdout === "APC_COMMAND_SYMLINK_CONTROL_V1";
     if (!result.control) result.error = child.error?.message ?? `Exit ${child.status ?? child.signal}: ${child.stderr ?? ""}`;
   } catch (error2) {
