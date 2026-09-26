@@ -8,10 +8,12 @@ import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS } from '../plugins/agent-plugins-conformance/src/cases.mjs';
+import { evaluateEnvironmentPrecedence } from './environment-precedence.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const output = join(root, 'reports/codex');
 const reportPath = join(output, 'report.json');
+const environmentPrecedencePath = join(output, 'environment-precedence-research.json');
 const [codex, ...extra] = process.argv.slice(2);
 assert.ok(codex && isAbsolute(codex) && extra.length === 0,
   'Usage: node scripts/smoke-codex.mjs <absolute-codex-binary>');
@@ -19,6 +21,7 @@ const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'a
 const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
 const commandSymlinkServers = ['recovery-command-symlink-posix', 'recovery-command-symlink-windows'];
+const environmentPrecedenceNames = ['USER', 'USERNAME'];
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
   'recovery-sse-non-loopback', 'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
@@ -278,6 +281,52 @@ try {
     }
     record({ action: 'record', observation });
   }
+  const environmentPrecedenceObservations = {};
+  for (const server of ['data', 'default']) {
+    const entry = status.data.find(({ name }) => name === server);
+    assert.ok(entry && Object.hasOwn(entry.tools, 'inspect_environment_precedence'),
+      `${server}: research environment precedence tool was not advertised`);
+    const result = await rpc('mcpServer/tool/call', {
+      threadId: thread.id, server, tool: 'inspect_environment_precedence', arguments: {},
+    });
+    assert.ok(!result.isError && !result.error,
+      `${server}: inspect_environment_precedence failed: ${JSON.stringify(result)}`);
+    const observation = result.structuredContent;
+    assert.deepEqual(Object.keys(observation).sort(), ['evidence', 'kind', 'server']);
+    assert.equal(observation.kind, 'mcp-environment-precedence-research');
+    assert.equal(observation.server, server);
+    assert.deepEqual(Object.keys(observation.evidence).sort(), ['env', 'version']);
+    assert.equal(observation.evidence.version, 1);
+    assert.ok(observation.evidence.env && typeof observation.evidence.env === 'object' &&
+      !Array.isArray(observation.evidence.env), `${server}: expected an environment object`);
+    assert.ok(Object.keys(observation.evidence.env).every((name) => environmentPrecedenceNames.includes(name)),
+      `${server}: research tool returned a non-candidate environment key`);
+    assert.ok(Object.values(observation.evidence.env).every((value) => typeof value === 'string'),
+      `${server}: research tool returned a non-string environment value`);
+    environmentPrecedenceObservations[server] = observation;
+  }
+  const expectedEnvironment = {
+    USER: 'apc-configured-environment-precedence',
+    USERNAME: 'apc-configured-environment-precedence',
+  };
+  const environmentPrecedenceEvaluation = evaluateEnvironmentPrecedence({
+    control: environmentPrecedenceObservations.data.evidence.env,
+    configured: environmentPrecedenceObservations.default.evidence.env,
+    expected: expectedEnvironment,
+  });
+  await writeFile(environmentPrecedencePath, `${JSON.stringify({
+    research: true,
+    productionConformanceReport: false,
+    note: 'Prototype evidence only; this result is intentionally excluded from the normal conformance reporter.',
+    client: { name: 'Codex', version },
+    platform: process.platform,
+    candidates: environmentPrecedenceNames,
+    control: environmentPrecedenceObservations.data,
+    configured: environmentPrecedenceObservations.default,
+    evaluation: environmentPrecedenceEvaluation,
+  }, null, 2)}\n`);
+  assert.equal(environmentPrecedenceEvaluation.status, 'pass',
+    `Environment precedence research did not pass: ${environmentPrecedenceEvaluation.detail}`);
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
   const sseObservations = [];
   for (const server of ['sse', 'sse-header-precedence', 'sse-redirect', 'sse-endpoint-origin']) {
@@ -303,6 +352,8 @@ try {
     sseObservations.push(observation);
   }
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  assert.equal(report.observations.some(({ kind }) => kind === 'mcp-environment-precedence-research'), false,
+    'Research-only environment evidence leaked into the normal conformance report');
   assert.deepEqual(report.observations.filter(({ kind, server }) => kind === 'mcp-sse' && !invalidSseServers.includes(server)), sseObservations,
     'SSE observations or native diagnostics were not preserved');
   const baselineSse = sseObservations[0].evidence;
@@ -343,6 +394,7 @@ try {
     `Native runtime connected through escaping executable symlinks: ${connectedCommandSymlinkServers.join(', ')}`);
   console.log(`Native Codex smoke passed: ${coveredCases.length} Core and Recovery cases; ${report.summary.not_verified} not verified.`);
   console.log(`Report: ${reportPath}`);
+  console.log(`Environment precedence research (${environmentPrecedenceEvaluation.status}): ${environmentPrecedencePath}`);
 } catch (error) {
   console.error(`Native Codex smoke failed: ${error.message}`);
   process.exitCode = 1;

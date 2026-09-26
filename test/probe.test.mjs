@@ -6,6 +6,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { buildReport } from '../plugins/agent-plugins-conformance/src/report.mjs';
+import { evaluateEnvironmentPrecedence } from '../scripts/environment-precedence.mjs';
 
 // Reference fixture launcher only. This explicitly implements the expansion
 // under test; it is NOT evidence that a third-party client loaded the plugin.
@@ -52,15 +53,32 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   for (const mode of ['default', 'relative', 'root', 'data']) {
     const client = await connect(files, mode);
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map(({ name }) => name), ['observe']);
-    assert.equal(tools[0].annotations.readOnlyHint, mode !== 'default');
-    assert.equal(tools[0].annotations.idempotentHint, mode !== 'default');
+    assert.deepEqual(tools.map(({ name }) => name), ['observe',
+      ...(['default', 'data'].includes(mode) ? ['inspect_environment_precedence'] : [])]);
+    const observeTool = tools.find(({ name }) => name === 'observe');
+    assert.equal(observeTool.annotations.readOnlyHint, mode !== 'default');
+    assert.equal(observeTool.annotations.idempotentHint, mode !== 'default');
     const result = await client.callTool({ name: 'observe', arguments: {} });
     assert.ok(!result.isError);
     const observation = JSON.parse(result.content[0].text);
     assert.deepEqual(result.structuredContent, observation);
     assert.equal(observation.evidence.root, files.root);
     assert.equal(observation.evidence.env.APC_SHOULD_NOT_LEAK, undefined);
+    if (['default', 'data'].includes(mode)) {
+      const research = await client.callTool({ name: 'inspect_environment_precedence', arguments: {} });
+      assert.ok(!research.isError);
+      assert.deepEqual(JSON.parse(research.content[0].text), research.structuredContent);
+      assert.deepEqual(Object.keys(research.structuredContent).sort(), ['evidence', 'kind', 'server']);
+      assert.equal(research.structuredContent.kind, 'mcp-environment-precedence-research');
+      assert.equal(research.structuredContent.server, mode);
+      assert.deepEqual(Object.keys(research.structuredContent.evidence).sort(), ['env', 'version']);
+      const researchNames = Object.keys(research.structuredContent.evidence.env).sort();
+      assert.ok(researchNames.every((name) =>
+        ['USER', 'USERNAME'].includes(name)));
+      if (mode === 'default') {
+        assert.deepEqual(researchNames, ['USER', 'USERNAME']);
+      }
+    }
     if (mode === 'default') {
       assert.equal(dirname(observation.evidence.dataWrite.path), files.data);
       assert.equal(observation.evidence.dataWrite.error, null);
@@ -95,6 +113,29 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 15);
   assert.equal(direct.summary.not_verified, 41);
+});
+
+test('a simulated faulty launcher that lets ambient env win produces real MCP failure evidence', { timeout: 30_000 }, async (t) => {
+  const files = await fixture(t);
+  const variables = { PLUGIN_ROOT: files.root, PLUGIN_DATA: files.data };
+  const configured = Object.fromEntries(Object.entries(files.config.mcpServers.default.env).map(([name, value]) => [
+    name, value.replaceAll('${PLUGIN_ROOT}', files.root).replaceAll('${PLUGIN_DATA}', files.data),
+  ]));
+  const control = await connect(files, 'data', { env: { ...variables, USER: 'ambient-user' } });
+  // This deliberately reverses the required merge order: ambient USER wins over the MCP entry.
+  const faulty = await connect(files, 'default', { env: { ...variables, ...configured, USER: 'ambient-user' } });
+  const [controlResult, faultyResult] = await Promise.all([
+    control.callTool({ name: 'inspect_environment_precedence', arguments: {} }),
+    faulty.callTool({ name: 'inspect_environment_precedence', arguments: {} }),
+  ]);
+  const result = evaluateEnvironmentPrecedence({
+    control: controlResult.structuredContent.evidence.env,
+    configured: faultyResult.structuredContent.evidence.env,
+    expected: Object.fromEntries(Object.entries(configured)
+      .filter(([name]) => ['USER', 'USERNAME'].includes(name))),
+  });
+  assert.equal(result.status, 'fail');
+  assert.equal(result.candidates.find(({ name }) => name === 'USER').status, 'fail');
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {

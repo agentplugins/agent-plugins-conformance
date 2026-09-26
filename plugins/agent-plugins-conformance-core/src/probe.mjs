@@ -14,6 +14,7 @@ if (!['default', 'relative', 'root', 'data', 'command-token-posix', 'command-tok
 // This value is independent of the client-provided PLUGIN_ROOT environment.
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 const environmentNames = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
+const environmentPrecedenceNames = ['USER', 'USERNAME'];
 let resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
@@ -38,7 +39,15 @@ const observeTool = {
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: serverName !== 'default', destructiveHint: false, idempotentHint: serverName !== 'default', openWorldHint: false },
 };
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [observeTool] }));
+const inspectEnvironmentPrecedenceTool = {
+  name: 'inspect_environment_precedence',
+  description: 'Research-only: return the exact candidate environment variables visible to this process. Do not record this result with the normal conformance reporter.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+};
+const tools = [observeTool];
+if (serverName === 'default' || serverName === 'data') tools.push(inspectEnvironmentPrecedenceTool);
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
 server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
   try {
     const args = params.arguments;
@@ -48,6 +57,23 @@ server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
       }
       const observation = { kind: 'mcp-stdio', server: serverName, evidence: { version: 1, ...launch } };
       if (serverName === 'default') observation.evidence.dataWrite = observeDataWrite(process.env.PLUGIN_DATA);
+      return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
+    }
+    if (params.name === 'inspect_environment_precedence' &&
+        (serverName === 'default' || serverName === 'data')) {
+      if (!args || typeof args !== 'object' || Array.isArray(args) || Object.keys(args).length !== 0) {
+        throw new Error('inspect_environment_precedence requires an empty object');
+      }
+      const observation = {
+        kind: 'mcp-environment-precedence-research',
+        server: serverName,
+        evidence: {
+          version: 1,
+          env: Object.fromEntries(environmentPrecedenceNames
+            .filter((name) => process.env[name] !== undefined)
+            .map((name) => [name, process.env[name]])),
+        },
+      };
       return { content: [{ type: 'text', text: JSON.stringify(observation) }], structuredContent: observation };
     }
     throw new Error(`Unknown tool: ${params.name}`);
