@@ -61,7 +61,7 @@ test('the copied Recovery fixture follows the external command symlink through a
     assert.equal((await lstat(link)).isSymbolicLink(), true);
     assert.equal(await readlink(link), path.basename(intermediate));
     assert.equal((await lstat(intermediate)).isSymbolicLink(), true);
-    assert.equal(await readlink(intermediate), configuredTarget);
+    assert.equal(path.normalize(await readlink(intermediate)), path.normalize(configuredTarget));
     const resolvedTarget = realpathSync.native(link);
     assert.equal(resolvedTarget, realpathSync.native(configuredTarget));
     const targetFromRoot = path.relative(root, resolvedTarget);

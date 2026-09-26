@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS } from '../plugins/agent-plugins-conformance/src/cases.mjs';
@@ -192,7 +192,7 @@ try {
           `The source ${platform} outer command fixture must point to its relative intermediate`);
         const launcher = platform === 'windows' ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env';
         assert.deepEqual(original.find(([path]) => path === intermediate),
-          [intermediate, 'symlink', launcher],
+          [intermediate, 'symlink', normalize(launcher)],
           `The source ${platform} intermediate command fixture must point outside the plugin`);
       }
       installationLinks = await Promise.all(['escape-link', ...commandLinks]
