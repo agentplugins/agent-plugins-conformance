@@ -31,7 +31,12 @@ const commandSymlink = ({
   target = server === POSIX_SERVER ? '/external/bin/launcher' : 'C:\\external\\launcher.exe',
   control = true,
   error = null,
-} = {}) => ({ server, link, root, target, control, error });
+  intermediateLink,
+} = {}) => ({
+  server, link,
+  ...(intermediateLink === undefined ? {} : { intermediateLink }),
+  root, target, control, error,
+});
 
 const recoveryRuntime = (inspection = undefined) => ({
   kind: 'mcp-stdio', server: 'recovery-valid',
@@ -76,6 +81,12 @@ test('candidate runtime or advertised discovery evidence fails regardless of the
     [discovery(WINDOWS_SERVER, true)],
     [discovery(POSIX_SERVER), usablePosix, candidateRuntime(WINDOWS_SERVER)],
     [discovery(POSIX_SERVER), usablePosix, discovery(WINDOWS_SERVER, true)],
+    [discovery(POSIX_SERVER, true), recoveryRuntime(commandSymlink({
+      intermediateLink: 'missing', target: null, control: false,
+    }))],
+    [discovery(POSIX_SERVER), recoveryRuntime(commandSymlink({
+      intermediateLink: 'missing', target: null, control: false,
+    })), candidateRuntime(WINDOWS_SERVER)],
   ]) assert.equal(status(...observations), 'fail');
 });
 
@@ -122,6 +133,30 @@ test('an installation-removed link passes independently of the external control'
   assert.equal(status(discovery(POSIX_SERVER)), 'not_verified');
 });
 
+test('a new two-hop observation requires the exact intermediate chain or a removed hop', () => {
+  const verdict = (inspection) => status(
+    discovery(POSIX_SERVER),
+    recoveryRuntime(inspection),
+  );
+
+  assert.equal(verdict(commandSymlink({ intermediateLink: 'symlink' })), 'pass');
+  assert.equal(verdict(commandSymlink({
+    intermediateLink: 'missing', target: null, control: false,
+    error: 'ENOENT: expected intermediate was removed before inspection',
+  })), 'pass');
+  assert.equal(verdict(commandSymlink({
+    link: 'missing', intermediateLink: null, target: null, control: false,
+    error: 'ENOENT: outer link was removed before inspection',
+  })), 'pass');
+
+  for (const inspection of [
+    commandSymlink({ intermediateLink: null }),
+    commandSymlink({ intermediateLink: 'other' }),
+    commandSymlink({ intermediateLink: 'symlink', control: false }),
+    commandSymlink({ intermediateLink: 'symlink', target: '/plugin/intermediate' }),
+  ]) assert.equal(verdict(inspection), 'not_verified');
+});
+
 test('inspection, runtime, and discovery schemas are strict', () => {
   const validInspection = commandSymlink();
   const malformedInspections = [
@@ -133,6 +168,8 @@ test('inspection, runtime, and discovery schemas are strict', () => {
     { ...validInspection, target: 'relative/launcher' },
     { ...validInspection, control: 1 },
     { ...validInspection, error: false },
+    { ...validInspection, intermediateLink: 'directory' },
+    { ...validInspection, intermediateLink: 1 },
     ...Object.keys(validInspection).map((field) => {
       const value = { ...validInspection };
       delete value[field];
@@ -171,6 +208,7 @@ test('command symlink evidence round trips canonically without changing unrelate
     server: WINDOWS_SERVER,
     root: 'C:\\Plugin',
     target: 'D:\\tools\\launcher.exe',
+    intermediateLink: 'symlink',
     error: 'exact inspection diagnostic\n  with whitespace\t',
   });
   const observations = [discovery(WINDOWS_SERVER), recoveryRuntime(inspection)];

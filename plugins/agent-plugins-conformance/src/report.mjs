@@ -284,10 +284,13 @@ export function validateInput(input, { recording = false } = {}) {
         if (Object.hasOwn(evidence, 'commandSymlink')) {
           const info = evidence.commandSymlink;
           const where = `${evidenceAt}.commandSymlink`;
-          const fields = ['server', 'link', 'root', 'target', 'control', 'error'];
-          object(info, fields, fields, where);
+          const fields = ['server', 'link', 'intermediateLink', 'root', 'target', 'control', 'error'];
+          object(info, fields, fields.filter((field) => field !== 'intermediateLink'), where);
           member(info.server, COMMAND_SYMLINK_SERVERS, `${where}.server`);
           member(info.link, ['symlink', 'missing', 'other', null], `${where}.link`);
+          if (Object.hasOwn(info, 'intermediateLink')) {
+            member(info.intermediateLink, ['symlink', 'missing', 'other', null], `${where}.intermediateLink`);
+          }
           for (const field of ['root', 'target']) {
             if (field === 'target' && info[field] === null) continue;
             string(info[field], `${where}.${field}`);
@@ -677,13 +680,18 @@ export function buildReport(input) {
       const flavor = pathFlavor(info.root);
       const relativeTarget = pathFlavor(info.target) === flavor ? flavor.relative(info.root, info.target) : null;
       const outside = relativeTarget !== null && (relativeTarget === '..' || relativeTarget.startsWith(`..${flavor.sep}`) || flavor.isAbsolute(relativeTarget));
-      if (info.link !== 'missing' && (info.link !== 'symlink' || !info.control || !outside)) {
+      const hasIntermediate = Object.hasOwn(info, 'intermediateLink');
+      const removed = info.link === 'missing' ||
+        (info.link === 'symlink' && hasIntermediate && info.intermediateLink === 'missing');
+      const intact = info.link === 'symlink' &&
+        (!hasIntermediate || info.intermediateLink === 'symlink') && info.control && outside;
+      if (!removed && !intact) {
         set(id, 'not_verified', 'The executable-symlink fixture or external launcher control was not usable.');
       } else if (invalidServerDiscovery.get(info.server) !== false) {
         set(id, 'not_verified', `Missing complete discovery evidence for ${info.server}.`);
       } else {
-        set(id, 'pass', info.link === 'missing'
-          ? `The client excluded ${info.server} and the installed executable link was removed.`
+        set(id, 'pass', removed
+          ? `The client excluded ${info.server} and an installed executable link was removed.`
           : `The client excluded ${info.server} while the independent external launcher control worked.`);
       }
     }

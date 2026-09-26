@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, agent/command-symlink-chain-prototype]
   pull_request:
 permissions:
   contents: read
