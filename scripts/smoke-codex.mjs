@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, openSync, writeSync } from 'node:fs';
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join, relative } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, normalize, relative } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { CASE_IDS } from '../plugins/agent-plugins-conformance/src/cases.mjs';
@@ -19,6 +19,12 @@ const names = ['agent-plugins-conformance-core', 'agent-plugins-conformance', 'a
 const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
 const commandSymlinkServers = ['recovery-command-symlink-posix', 'recovery-command-symlink-windows'];
+const commandSymlinkNames = {
+  posix: { outer: 'escape-command-posix', intermediate: 'escape-command-intermediate-posix' },
+  windows: {
+    outer: 'escape-command-windows.exe', intermediate: 'escape-command-intermediate-windows.exe',
+  },
+};
 const servers = ['default', 'relative', 'root', 'data', commandServer, 'http', 'recovery-valid'];
 const invalidSseServers = [
   'recovery-sse-non-loopback', 'recovery-sse-relative-url', 'recovery-sse-fragment', 'recovery-sse-userinfo',
@@ -179,12 +185,21 @@ try {
     if (name === 'agent-plugins-conformance-recovery') {
       assert.deepEqual(original.find(([path]) => path === 'escape-link'), ['escape-link', 'symlink', '..'],
         'The source fixture must contain the escaping symlink');
-      installationLinks = await Promise.all(['escape-link', 'escape-command-posix', 'escape-command-windows.exe']
+      const commandLinks = Object.values(commandSymlinkNames).flatMap(({ outer, intermediate }) =>
+        [outer, intermediate]);
+      for (const [platform, { outer, intermediate }] of Object.entries(commandSymlinkNames)) {
+        assert.deepEqual(original.find(([path]) => path === outer), [outer, 'symlink', intermediate],
+          `The source ${platform} outer command fixture must point to its relative intermediate`);
+        const launcher = platform === 'windows' ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env';
+        assert.deepEqual(original.find(([path]) => path === intermediate),
+          [intermediate, 'symlink', normalize(launcher)],
+          `The source ${platform} intermediate command fixture must point outside the plugin`);
+      }
+      installationLinks = await Promise.all(['escape-link', ...commandLinks]
         .map(async (link) => {
           const [source, installed] = await Promise.all([linkState(join(root, 'plugins', name), link), linkState(installedPath, link)]);
           return {
             link,
-            applicable: link === (process.platform === 'win32' ? 'escape-command-windows.exe' : 'escape-command-posix'),
             source,
             installed,
           };
@@ -331,13 +346,30 @@ try {
   }
   const commandSymlink = report.observations
     .find(({ kind, server }) => kind === 'mcp-stdio' && server === 'recovery-valid')?.evidence?.commandSymlink;
-  const { source: sourceLink, installed: installedLink } = installationLinks.find(({ applicable }) => applicable);
-  assert.equal(sourceLink.kind, 'symlink', 'The source command fixture must be a symlink');
-  assert.equal(commandSymlink.link, installedLink.kind === 'file' ? 'other' : installedLink.kind,
+  const { outer, intermediate } = commandSymlinkNames[commandPlatform];
+  const outerLinks = installationLinks.find(({ link }) => link === outer);
+  const intermediateLinks = installationLinks.find(({ link }) => link === intermediate);
+  assert.deepEqual(outerLinks.source,
+    { kind: 'symlink', resolvedTarget: intermediateLinks.source.resolvedTarget },
+    'The source outer command fixture must resolve through its intermediate symlink');
+  assert.equal(intermediateLinks.source.kind, 'symlink',
+    'The source intermediate command fixture must be a symlink');
+  assert.equal(commandSymlink.link,
+    outerLinks.installed.kind === 'file' ? 'other' : outerLinks.installed.kind,
     'The probe inspection must match the installed command link');
-  if (installedLink.kind === 'symlink') {
-    assert.equal(relative(commandSymlink.target, installedLink.resolvedTarget), '',
-      'The probe must report the actual installed command target');
+  if (outerLinks.installed.kind === 'symlink') {
+    assert.equal(commandSymlink.intermediateLink,
+      intermediateLinks.installed.kind === 'file' ? 'other' : intermediateLinks.installed.kind,
+      'The probe inspection must match the installed intermediate command link');
+    if (outerLinks.installed.resolvedTarget === null) {
+      assert.equal(commandSymlink.target, null, 'A dangling command chain must retain a null final target');
+    } else {
+      assert.equal(relative(commandSymlink.target, outerLinks.installed.resolvedTarget), '',
+        'The probe must report the actual installed command target');
+    }
+  } else {
+    assert.equal(commandSymlink.intermediateLink, null,
+      'The probe must not infer intermediate state without the expected outer link');
   }
   assert.deepEqual(connectedCommandSymlinkServers, [],
     `Native runtime connected through escaping executable symlinks: ${connectedCommandSymlinkServers.join(', ')}`);
