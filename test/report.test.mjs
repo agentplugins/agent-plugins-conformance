@@ -6,6 +6,9 @@ import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance/src/
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
   const platform = flavor === path.win32 ? 'windows' : 'posix';
+  const precedenceEnv = (server) => server === 'default'
+    ? { USER: 'apc-configured-environment-precedence', USERNAME: 'apc-configured-environment-precedence' }
+    : server === 'data' ? { USER: 'ambient-user', USERNAME: 'ambient-username' } : {};
   return {
     schemaVersion: 1,
     observations: [
@@ -19,7 +22,8 @@ function input(root = '/fixture/plugin', data = '/state/plugin') {
           cwd: server === 'default' ? root : server === 'data' ? data : flavor.join(root, 'probe-workdir'),
           argv: ['default', 'arg with spaces', '', root, data, '${APC_UNKNOWN}', '$APC_VALUE', '${PLUGIN_ROOT_SUFFIX}'],
           env: { PLUGIN_ROOT: root, PLUGIN_DATA: data, APC_VALUE: 'fixture value with spaces',
-            APC_EXPANSION: `${root}|${data}|${root}`, APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}' },
+            APC_EXPANSION: `${root}|${data}|${root}`, APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}',
+            ...precedenceEnv(server) },
         },
       })),
       commandTokenObservation(platform, root, data),
@@ -87,7 +91,7 @@ const invalidSseServerCases = [
 test('complete stdio and skill core evidence passes its cases and preserves canonical evidence', () => {
   const value = input();
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 17, fail: 0, not_verified: 39, total: 56 });
+  assert.deepEqual(report.summary, { pass: 18, fail: 0, not_verified: 39, total: 57 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
@@ -100,19 +104,19 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
 
 test('recovery witnesses extend the canonical report without changing core-only results', () => {
   const coreOnly = buildReport(input());
-  assert.deepEqual(coreOnly.summary, { pass: 17, fail: 0, not_verified: 39, total: 56 });
+  assert.deepEqual(coreOnly.summary, { pass: 18, fail: 0, not_verified: 39, total: 57 });
   assert.equal(result(coreOnly, 'skills.recovery.valid-skill-available').status, 'not_verified');
   assert.equal(result(coreOnly, 'mcp.stdio.recovery.valid-server-available').status, 'not_verified');
 
   const recoveryOnly = buildReport({ schemaVersion: 1, observations: recoveryObservations() });
-  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 54, total: 56 });
+  assert.deepEqual(recoveryOnly.summary, { pass: 2, fail: 0, not_verified: 55, total: 57 });
   assert.equal(result(recoveryOnly, 'skills.recovery.valid-skill-available').status, 'pass');
   assert.equal(result(recoveryOnly, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
 
   const combinedInput = input();
   combinedInput.observations.push(...recoveryObservations());
   const combined = buildReport(combinedInput);
-  assert.deepEqual(combined.summary, { pass: 20, fail: 0, not_verified: 36, total: 56 });
+  assert.deepEqual(combined.summary, { pass: 21, fail: 0, not_verified: 36, total: 57 });
   assert.deepEqual(combined.results.map(({ id }) => id), CASE_IDS);
   const recoveryIds = new Set([
     'skills.recovery.valid-skill-available',
@@ -135,7 +139,7 @@ test('recovery witnesses extend the canonical report without changing core-only 
   assert.equal(JSON.stringify(buildReport(reordered)), JSON.stringify(combined));
 
   const missing = buildReport({ schemaVersion: 1, observations: [] });
-  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 56, total: 56 });
+  assert.deepEqual(missing.summary, { pass: 0, fail: 0, not_verified: 57, total: 57 });
 });
 
 test('an incorrect recovery skill marker fails its availability check independently', () => {
@@ -146,7 +150,7 @@ test('an incorrect recovery skill marker fails its availability check independen
   assert.equal(availability.status, 'fail');
   assert.match(availability.detail, /expected "APC_RECOVERY_VALID_V1"; observed "wrong recovery marker"/);
   assert.equal(result(report, 'mcp.stdio.recovery.valid-server-available').status, 'pass');
-  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 54, total: 56 });
+  assert.deepEqual(report.summary, { pass: 1, fail: 1, not_verified: 55, total: 57 });
 });
 
 test('report bytes are deterministic across observation and property orders', () => {
@@ -161,11 +165,11 @@ test('missing observations remain unverified and every result identifies its hie
   const value = input();
   value.observations = [];
   const report = buildReport(value);
-  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 56, total: 56 });
+  assert.deepEqual(report.summary, { pass: 0, fail: 0, not_verified: 57, total: 57 });
   const skills = report.results.filter(({ id }) => id.startsWith('skills.'));
   const mcp = report.results.filter(({ id }) => id.startsWith('mcp.'));
   assert.deepEqual(skills.map(({ id }) => id), ['skills.discovery.immediate-children', 'skills.recovery.valid-skill-available', 'skills.recovery.invalid-mcp-document']);
-  assert.equal(mcp.length, 48);
+  assert.equal(mcp.length, 49);
   assert.equal(report.results.filter(({ id }) => id.startsWith('filesystem.')).length, 5);
   assert.ok(mcp.some(({ id }) => id === 'mcp.stdio.env.plugin-root'));
   for (const result of report.results) {
@@ -183,6 +187,58 @@ test('missing default environment fails independent checks and leaves dependent 
   assert.equal(result(report, 'filesystem.data.writable').status, 'not_verified');
   assert.equal(result(report, 'mcp.stdio.tool-availability.cwd-omitted').status, 'pass');
   assert.equal(result(report, 'mcp.stdio.cwd.plugin-data').status, 'pass');
+});
+
+test('configured environment precedence requires complete new evidence and an observable control difference', () => {
+  const id = 'mcp.stdio.env.configured-precedence';
+  const value = input();
+  assert.equal(result(buildReport(value), id).status, 'pass');
+
+  for (const [server, key] of [
+    ['default', 'USER'], ['default', 'USERNAME'], ['data', 'USER'], ['data', 'USERNAME'],
+  ]) {
+    const partial = structuredClone(value);
+    delete runtime(partial, server).env[key];
+    const outcome = result(buildReport(partial), id);
+    assert.equal(outcome.status, 'not_verified', `${server}.${key}`);
+    assert.match(outcome.detail, new RegExp(`${server}\\.${key}`));
+  }
+
+  for (const key of ['USER', 'USERNAME']) {
+    for (const configured of [null, 'ambient-value']) {
+      const invalid = structuredClone(value);
+      runtime(invalid).env[key] = configured;
+      const outcome = result(buildReport(invalid), id);
+      assert.equal(outcome.status, 'fail', `${key}: ${configured}`);
+      assert.match(outcome.detail, new RegExp(`${key}: expected`));
+    }
+  }
+
+  const nullControl = structuredClone(value);
+  runtime(nullControl, 'data').env.USER = null;
+  runtime(nullControl, 'data').env.USERNAME = null;
+  assert.equal(result(buildReport(nullControl), id).status, 'not_verified');
+  const equalControl = structuredClone(value);
+  runtime(equalControl, 'data').env.USER = 'apc-configured-environment-precedence';
+  runtime(equalControl, 'data').env.USERNAME = 'apc-configured-environment-precedence';
+  assert.equal(result(buildReport(equalControl), id).status, 'not_verified');
+
+  const oneDifferent = structuredClone(nullControl);
+  runtime(oneDifferent, 'data').env.USERNAME = 'ambient-username';
+  assert.equal(result(buildReport(oneDifferent), id).status, 'pass');
+
+  const old = structuredClone(value);
+  for (const server of ['default', 'data']) {
+    for (const key of ['USER', 'USERNAME']) delete runtime(old, server).env[key];
+  }
+  const oldReport = buildReport(old);
+  assert.equal(result(oldReport, id).status, 'not_verified');
+  for (const server of ['default', 'data']) {
+    for (const key of ['USER', 'USERNAME']) {
+      assert.equal(Object.hasOwn(runtime(oldReport, server).env, key), false);
+    }
+  }
+  assert.equal(runtime(buildReport(nullControl), 'data').env.USER, null);
 });
 
 test('plugin data writability distinguishes missing evidence, failed writes, successful writes, and cleanup warnings', () => {
@@ -238,7 +294,7 @@ test('data cwd follows resolved aliases while expansion preserves the original e
   runtime(value).dataWrite.path = '/private/tmp/data/.agent-plugins-conformance-write-test';
   runtime(value, 'data').cwd = '/private/tmp/data';
   const report = buildReport(value);
-  assert.equal(report.summary.pass, 17);
+  assert.equal(report.summary.pass, 18);
   assert.equal(runtime(report, 'data').resolvedData, '/private/tmp/data');
   assert.equal(runtime(report).env.PLUGIN_DATA, '/tmp/data');
   runtime(value, 'data').resolvedData = null;
@@ -407,7 +463,7 @@ test('command-token observations stay outside cwd and plugin-data aggregate chec
 test('path comparisons follow producing OS and normalize path components', () => {
   for (const [root, data] of [['/plugin with spaces', '/data with spaces'], ['C:\\plugin', 'D:\\data'], ['\\\\host\\share\\plugin', '\\\\host\\share\\data']]) {
     const value = input(root, data);
-    assert.equal(buildReport(value).summary.pass, 17);
+    assert.equal(buildReport(value).summary.pass, 18);
     const flavor = root.startsWith('/') ? path.posix : path.win32;
     runtime(value).cwd = `${root}${flavor.sep}sub${flavor.sep}..`;
     assert.equal(result(buildReport(value), 'mcp.stdio.cwd.omitted').status, 'pass');
@@ -446,6 +502,8 @@ test('unknown keys, duplicate observations, identities, versions and types are r
     [(v) => { runtime(v).resolvedData = 1; }, /resolvedData: expected/],
     [(v) => { runtime(v).argv = [1]; }, /expected a string/],
     [(v) => { runtime(v).env.APC_VALUE = null; }, /expected a string/],
+    [(v) => { runtime(v).env.USER = 1; }, /expected a string/],
+    [(v) => { runtime(v, 'data').env.USERNAME = {}; }, /expected a string/],
     [(v) => { v.observations[0].evidence = {}; }, /unknown field/],
     [(v) => { v.observations[3].kind = 'unknown'; }, /expected one of: mcp-stdio, mcp-streamable-http, mcp-sse, mcp-discovery, skill/],
   ];
@@ -663,7 +721,7 @@ test('malformed MCP skill evidence affects only its own result for missing, corr
     assert.deepEqual(result(report, id).specSections, ['7.2.2']);
     assert.deepEqual(report.results.filter((item) => item.id !== id), baseline.results.filter((item) => item.id !== id));
     assert.deepEqual(report.observations.find(({ skill }) => skill === observation.skill), observation);
-    assert.deepEqual(report.summary, { pass: status === 'pass' ? 21 : 20, fail: status === 'fail' ? 1 : 0, not_verified: 35, total: 56 });
+    assert.deepEqual(report.summary, { pass: status === 'pass' ? 22 : 21, fail: status === 'fail' ? 1 : 0, not_verified: 35, total: 57 });
     if (status === 'fail') assert.match(result(report, id).detail, /expected "APC_INVALID_MCP_VALID_V1"; observed "incorrect marker"/);
     const reversed = { schemaVersion: 1, observations: [...value.observations, observation].reverse() };
     assert.equal(JSON.stringify(buildReport(reversed)), JSON.stringify(report));

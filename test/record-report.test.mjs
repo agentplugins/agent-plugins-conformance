@@ -20,7 +20,14 @@ const mcp = () => ({
     env: {
       PLUGIN_ROOT: '/plugin', PLUGIN_DATA: '/data', APC_VALUE: 'fixture value with spaces',
       APC_EXPANSION: '/plugin|/data|/plugin', APC_LITERAL: '${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}',
+      USER: 'apc-configured-environment-precedence', USERNAME: 'apc-configured-environment-precedence',
     },
+  },
+});
+const dataMcp = (env = { USER: null, USERNAME: 'ambient-username' }) => ({
+  kind: 'mcp-stdio', server: 'data', evidence: {
+    version: 1, server: 'data', root: '/plugin', cwd: '/data', resolvedData: '/data',
+    argv: ['data'], env,
   },
 });
 const commandToken = (platform = 'posix', {
@@ -391,6 +398,23 @@ test('distinct keys accumulate in deterministic order; repeated keys fully repla
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.plugin-root').status, 'fail');
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.expansion').status, 'not_verified');
   assert.deepEqual(await readdir(join(f.directory, 'nested directory')), ['report with spaces.json']);
+});
+
+test('recorder preserves nullable environment precedence evidence through canonical reloads', async (t) => {
+  const f = await fixture(t);
+  f.success(start);
+  f.record(dataMcp());
+  f.record(mcp());
+  let report = await f.read();
+  assert.deepEqual(report.observations.filter(({ server }) => ['default', 'data'].includes(server)), [mcp(), dataMcp()]);
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.configured-precedence').status, 'pass');
+  assert.equal(report.observations.find(({ server }) => server === 'data').evidence.env.USER, null);
+
+  const oldData = dataMcp({});
+  f.record(oldData);
+  report = await f.read();
+  assert.deepEqual(report.observations.find(({ server }) => server === 'data'), oldData);
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.env.configured-precedence').status, 'not_verified');
 });
 
 test('command-token evidence records canonically and replacement changes only its verdict', async (t) => {
