@@ -26,6 +26,19 @@ test('plugin and MCP target the same published specification version', async () 
   assert.equal((await load('mcp')).$schema, 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
 });
 
+test('command-token MCP servers use the shared plugin-relative working directory', async () => {
+  const mcp = JSON.parse(await readFile(
+    new URL('../plugins/agent-plugins-conformance-core/mcp.json', import.meta.url), 'utf8'));
+  for (const platform of ['posix', 'windows']) {
+    assert.deepEqual(mcp.mcpServers[`command-token-${platform}`], {
+      type: 'stdio',
+      command: `./bin/${platform}/probe token.${platform === 'posix' ? 'sh' : 'cmd'}`,
+      args: ['arg with spaces', '', 'literal-value'],
+      cwd: './probe-workdir',
+    });
+  }
+});
+
 test('primary run skill is separate from the core discovery fixture layout', async () => {
   const primary = new URL('../plugins/agent-plugins-conformance/', import.meta.url);
   const core = new URL('../plugins/agent-plugins-conformance-core/', import.meta.url);

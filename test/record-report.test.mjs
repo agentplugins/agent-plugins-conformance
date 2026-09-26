@@ -35,12 +35,13 @@ const commandToken = (platform = 'posix', {
   data = platform === 'posix' ? '/data' : 'D:\\data',
   origin = `${platform}-exact`, marker = 'intact',
   args = ['arg with spaces', '', 'literal-value'],
+  cwd = platform === 'posix' ? `${root}/probe-workdir` : `${root}\\probe-workdir`,
 } = {}) => {
   const server = `command-token-${platform}`;
   return {
     kind: 'mcp-stdio', server,
     evidence: {
-      version: 1, server, root, cwd: root, resolvedData: data,
+      version: 1, server, root, cwd, resolvedData: data,
       argv: [server, origin, marker, ...args], env: {},
     },
   };
@@ -425,6 +426,8 @@ test('command-token evidence records canonically and replacement changes only it
   f.record(exact);
   let report = await f.read();
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'pass');
+  assert.equal(report.results.find(({ id }) =>
+    id === 'mcp.stdio.command.plugin-relative-resolution').status, 'pass');
   assert.deepEqual(report.observations, [mcp(), exact]);
 
   exact.evidence.argv.push('changed after recording');
@@ -436,13 +439,25 @@ test('command-token evidence records canonically and replacement changes only it
   f.record(split);
   report = await f.read();
   assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'fail');
+  assert.equal(report.results.find(({ id }) =>
+    id === 'mcp.stdio.command.plugin-relative-resolution').status, 'not_verified');
   assert.deepEqual(report.observations, [mcp(), split]);
+
+  const cwdExact = commandToken('posix', { origin: 'posix-cwd-exact' });
+  f.record(cwdExact);
+  report = await f.read();
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'pass');
+  assert.equal(report.results.find(({ id }) =>
+    id === 'mcp.stdio.command.plugin-relative-resolution').status, 'fail');
+  assert.deepEqual(report.observations, [mcp(), cwdExact]);
 
   const windows = commandToken('windows');
   f.record(windows);
   report = await f.read();
-  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'fail');
-  assert.deepEqual(report.observations, [mcp(), split, windows]);
+  assert.equal(report.results.find(({ id }) => id === 'mcp.stdio.command.single-token').status, 'pass');
+  assert.equal(report.results.find(({ id }) =>
+    id === 'mcp.stdio.command.plugin-relative-resolution').status, 'fail');
+  assert.deepEqual(report.observations, [mcp(), cwdExact, windows]);
 });
 
 test('recovery observations have distinct recorder keys and repeated keys replace canonically', async (t) => {

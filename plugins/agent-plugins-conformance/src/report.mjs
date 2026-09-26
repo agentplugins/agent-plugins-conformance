@@ -4,8 +4,14 @@ import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 export { CASES, CASE_IDS } from './cases.mjs';
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const COMMAND_TOKEN_SERVERS = Object.freeze({
-  'command-token-posix': Object.freeze({ exactOrigin: 'posix-exact', decoyOrigin: 'posix-decoy', splitTail: 'token.sh' }),
-  'command-token-windows': Object.freeze({ exactOrigin: 'windows-exact', decoyOrigin: 'windows-decoy', splitTail: 'token.cmd' }),
+  'command-token-posix': Object.freeze({
+    rootExactOrigin: 'posix-exact', rootDecoyOrigin: 'posix-decoy',
+    cwdExactOrigin: 'posix-cwd-exact', cwdDecoyOrigin: 'posix-cwd-decoy', splitTail: 'token.sh',
+  }),
+  'command-token-windows': Object.freeze({
+    rootExactOrigin: 'windows-exact', rootDecoyOrigin: 'windows-decoy',
+    cwdExactOrigin: 'windows-cwd-exact', cwdDecoyOrigin: 'windows-cwd-decoy', splitTail: 'token.cmd',
+  }),
 });
 const INVALID_STDIO_SERVERS = Object.freeze({
   'recovery-cwd-invalid-form': 'mcp.stdio.cwd.invalid-form',
@@ -569,6 +575,7 @@ export function buildReport(input) {
   }
   const defaultEvidence = runtime.get('default');
   const commandTokenId = 'mcp.stdio.command.single-token';
+  const commandResolutionId = 'mcp.stdio.command.plugin-relative-resolution';
   if (defaultEvidence) {
     const defaultFlavor = pathFlavor(defaultEvidence.root);
     const platform = defaultFlavor === path.win32 ? 'windows' : 'posix';
@@ -577,21 +584,47 @@ export function buildReport(input) {
     const evidence = runtime.get(server);
     if (!evidence) {
       set(commandTokenId, 'not_verified', `No attributable ${platform} command-token observation was supplied.`);
+      set(commandResolutionId, 'not_verified',
+        `No attributable ${platform} plugin-relative command observation was supplied.`);
     } else if (!samePath(evidence.root, defaultEvidence.root, defaultFlavor)) {
       set(commandTokenId, 'not_verified',
         `The ${platform} command-token observation did not identify the same installed plugin root as the Core default observation.`);
+      set(commandResolutionId, 'not_verified',
+        `The ${platform} plugin-relative command observation did not identify the same installed plugin root as the Core default observation.`);
     } else {
-      const split = evidence.argv[0] === server && evidence.argv[1] === variant.decoyOrigin &&
+      const rootIntact = evidence.argv[0] === server && evidence.argv[1] === variant.rootExactOrigin &&
+        evidence.argv[2] === 'intact';
+      const cwdIntact = evidence.argv[0] === server && evidence.argv[1] === variant.cwdExactOrigin &&
+        evidence.argv[2] === 'intact';
+      const split = evidence.argv[0] === server &&
+        [variant.rootDecoyOrigin, variant.cwdDecoyOrigin].includes(evidence.argv[1]) &&
         evidence.argv[2] === 'split' && evidence.argv[3] === variant.splitTail;
-      const intact = evidence.argv[0] === server && evidence.argv[1] === variant.exactOrigin && evidence.argv[2] === 'intact';
       if (split) {
         set(commandTokenId, 'fail',
           `The ${platform} decoy wrapper received ${JSON.stringify(variant.splitTail)} as an argument, showing that the configured command was split.`);
-      } else if (intact) {
+      } else if (rootIntact || cwdIntact) {
         set(commandTokenId, 'pass', `The ${platform} exact-name wrapper was selected.`);
       } else {
         set(commandTokenId, 'not_verified',
           `The ${platform} command-token observation did not identify either the exact-name wrapper or an attributable split-name decoy.`);
+      }
+
+      const expectedCwd = defaultFlavor.join(defaultEvidence.root, 'probe-workdir');
+      if (!samePath(evidence.cwd, expectedCwd, defaultFlavor)) {
+        set(commandResolutionId, 'not_verified',
+          `The ${platform} plugin-relative command observation ran in ${JSON.stringify(evidence.cwd)} instead of the expected working directory ${JSON.stringify(expectedCwd)}.`);
+      } else if (split) {
+        set(commandResolutionId, 'not_verified',
+          `The ${platform} command was split before resolution, so plugin-relative resolution was not evaluated.`);
+      } else if (rootIntact) {
+        set(commandResolutionId, 'pass',
+          `The ${platform} plugin-root exact-name wrapper was selected while the configured working directory remained active.`);
+      } else if (cwdIntact) {
+        set(commandResolutionId, 'fail',
+          `The ${platform} working-directory exact-name wrapper was selected, showing that the plugin-relative command was resolved against the subprocess working directory.`);
+      } else {
+        set(commandResolutionId, 'not_verified',
+          `The ${platform} command observation did not identify an intact exact-name wrapper, so plugin-relative resolution was not evaluated.`);
       }
     }
   }
