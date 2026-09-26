@@ -106,7 +106,7 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
   assert.equal(direct.summary.pass, 16);
-  assert.equal(direct.summary.not_verified, 41);
+  assert.equal(direct.summary.not_verified, 42);
 });
 
 test('faulty ambient precedence becomes a normal reporter failure for both platform variables', { timeout: 30_000 }, async (t) => {

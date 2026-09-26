@@ -271,12 +271,12 @@ try {
       : invalidSseServers.includes(server) ? 'mcp-sse' : 'mcp-stdio',
       `${server}: missing observation`);
     assert.equal(observation.server, server, `${server}: unexpected observation server`);
+    record({ action: 'record', observation });
     if (server === commandServer) {
       assert.deepEqual(observation.evidence.argv,
         [commandServer, `${commandPlatform}-exact`, 'intact', 'arg with spaces', '', 'literal-value'],
         'Native launch did not preserve the command token and configured arguments');
     }
-    record({ action: 'record', observation });
   }
   // SSE is optional. Preserve native diagnostics even when the loader omits entries.
   const sseObservations = [];

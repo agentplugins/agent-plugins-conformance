@@ -29,6 +29,7 @@ export const CASES = Object.freeze([
   ['mcp.stdio.env.configured-value', 'Configured environment', ['9.1']],
   ['mcp.stdio.env.configured-precedence', 'Configured environment precedence', ['9.1']],
   ['mcp.stdio.command.single-token', 'Command token preservation', ['7.2.1']],
+  ['mcp.stdio.command.plugin-relative-resolution', 'Plugin-relative command resolution', ['7.2.1']],
   ['mcp.stdio.args.preservation-and-expansion', 'Argument preservation and expansion', ['7.2.1', '9.2']],
   ['mcp.stdio.env.expansion', 'Environment expansion', ['9.2']],
   ['mcp.streamable-http.tool-availability', 'Streamable HTTP MCP tool evidence', ['6.1', '7.2.1']],

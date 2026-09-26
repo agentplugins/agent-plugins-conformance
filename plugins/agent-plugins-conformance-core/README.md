@@ -35,6 +35,7 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.stdio.env.configured-precedence` | Configured environment values replace conflicting base-environment values. |
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.command.single-token` | A command path containing a space is preserved as a single executable token. |
+| `mcp.stdio.command.plugin-relative-resolution` | Plugin-relative commands resolve against the plugin root, independently of the configured working directory. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |
 | `mcp.streamable-http.tool-availability` | The client exposes the HTTP tool and it returns a valid observation despite a conflicting, mixed-case configured `Accept` header. A completed discovery or call attempt with no observation fails this check only when the reporter confirms that the local fixture is healthy. |
 | `mcp.streamable-http.url.literal-route-and-query` | The configured URL path and query are preserved literally. |
