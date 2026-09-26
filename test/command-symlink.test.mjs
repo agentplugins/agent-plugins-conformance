@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
-import { cp, lstat, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -44,6 +44,8 @@ test('the copied Recovery fixture follows the external command symlink through a
     const windows = process.platform === 'win32';
     const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
     const link = path.join(root, windows ? 'escape-command-windows.exe' : 'escape-command-posix');
+    const intermediate = path.join(root, windows
+      ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix');
     const configuredTarget = windows ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env';
     const config = JSON.parse(await readFile(path.join(root, 'mcp.json'), 'utf8'));
     const configured = config.mcpServers[server];
@@ -57,6 +59,9 @@ test('the copied Recovery fixture follows the external command symlink through a
       args: configuredArgs,
     });
     assert.equal((await lstat(link)).isSymbolicLink(), true);
+    assert.equal(await readlink(link), path.basename(intermediate));
+    assert.equal((await lstat(intermediate)).isSymbolicLink(), true);
+    assert.equal(path.normalize(await readlink(intermediate)), path.normalize(configuredTarget));
     const resolvedTarget = realpathSync.native(link);
     assert.equal(resolvedTarget, realpathSync.native(configuredTarget));
     const targetFromRoot = path.relative(root, resolvedTarget);
@@ -130,6 +135,7 @@ test('collector reports a rewritten command link actual target without treating 
   const inspection = inspectCommandSymlink(await realpath(root));
   assert.equal(inspection.server, server);
   assert.equal(inspection.link, 'symlink');
+  assert.equal(inspection.intermediateLink, null);
   assert.equal(inspection.target, await realpath(inwardTarget));
   assert.equal(inspection.control, false);
 
@@ -147,4 +153,122 @@ test('collector reports a rewritten command link actual target without treating 
     ],
   });
   assert.equal(report.results.find(({ id }) => id === CASE_ID).status, 'not_verified');
+});
+
+test('collector distinguishes either removed hop in the expected command chain', async (t) => {
+  const windows = process.platform === 'win32';
+  const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
+  const outerName = windows ? 'escape-command-windows.exe' : 'escape-command-posix';
+  const intermediateName = windows
+    ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix';
+
+  for (const removed of [outerName, intermediateName]) {
+    await t.test(removed, async (t) => {
+      const { root } = await copiedRecoveryFixture(t, 'command-symlink-removed-');
+      await rm(path.join(root, removed));
+      const inspection = inspectCommandSymlink(await realpath(root));
+      assert.equal(inspection.server, server);
+      assert.equal(inspection.link, removed === outerName ? 'missing' : 'symlink');
+      assert.equal(inspection.intermediateLink, removed === outerName ? null : 'missing');
+      assert.equal(inspection.target, null);
+
+      const report = buildReport({
+        schemaVersion: 1,
+        observations: [
+          { kind: 'mcp-discovery', server, advertised: false },
+          {
+            kind: 'mcp-stdio', server: 'recovery-valid',
+            evidence: {
+              version: 1, server: 'recovery-valid', resolvedData: null,
+              commandSymlink: inspection,
+            },
+          },
+        ],
+      });
+      assert.equal(report.results.find(({ id }) => id === CASE_ID).status, 'pass');
+    });
+  }
+});
+
+test('collector rejects malformed or rewritten command chains as usable evidence', async (t) => {
+  const windows = process.platform === 'win32';
+  const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
+  const outerName = windows ? 'escape-command-windows.exe' : 'escape-command-posix';
+  const intermediateName = windows
+    ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix';
+  const cases = [
+    {
+      name: 'regular intermediate',
+      mutate: async (root) => {
+        const intermediate = path.join(root, intermediateName);
+        await rm(intermediate);
+        await writeFile(intermediate, 'not an executable symlink');
+      },
+      expectedIntermediate: 'other',
+    },
+    {
+      name: 'rewritten intermediate target',
+      mutate: async (root) => {
+        const intermediate = path.join(root, intermediateName);
+        const inward = path.join(root, 'inward-intermediate-target');
+        await writeFile(inward, 'not the fixture launcher');
+        await rm(intermediate);
+        await symlink(path.basename(inward), intermediate, 'file');
+      },
+      expectedIntermediate: 'symlink',
+    },
+    {
+      name: 'rewritten outer target',
+      mutate: async (root) => {
+        const outer = path.join(root, outerName);
+        await rm(outer);
+        await symlink(windows ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env', outer, 'file');
+      },
+      expectedIntermediate: null,
+    },
+    {
+      name: 'intermediate loop',
+      mutate: async (root) => {
+        const intermediate = path.join(root, intermediateName);
+        await rm(intermediate);
+        await symlink(outerName, intermediate, 'file');
+      },
+      expectedIntermediate: 'symlink',
+    },
+    {
+      name: 'unrelated dangling outer target',
+      mutate: async (root) => {
+        const outer = path.join(root, outerName);
+        await rm(outer);
+        await symlink('unrelated-missing-launcher', outer, 'file');
+      },
+      expectedIntermediate: null,
+    },
+  ];
+
+  for (const fixtureCase of cases) {
+    await t.test(fixtureCase.name, async (t) => {
+      const { root } = await copiedRecoveryFixture(t, 'command-symlink-malformed-');
+      await fixtureCase.mutate(root);
+      const inspection = inspectCommandSymlink(await realpath(root));
+      assert.equal(inspection.link, 'symlink');
+      assert.equal(inspection.intermediateLink, fixtureCase.expectedIntermediate);
+      assert.equal(inspection.control, false);
+
+      const report = buildReport({
+        schemaVersion: 1,
+        observations: [
+          { kind: 'mcp-discovery', server, advertised: false },
+          {
+            kind: 'mcp-stdio', server: 'recovery-valid',
+            evidence: {
+              version: 1, server: 'recovery-valid', resolvedData: null,
+              commandSymlink: inspection,
+            },
+          },
+        ],
+      });
+      assert.equal(report.results.find(({ id }) => id === CASE_ID).status, 'not_verified');
+    });
+  }
 });

@@ -202,7 +202,7 @@ test('copied recovery plugin serves exact valid and invalid-server observations 
     evidence: {
       version: 1, server: 'recovery-valid', resolvedData, symlinkCwd: 'symlink',
       commandSymlink: {
-        server: commandSymlinkServer, link: 'symlink', root: resolvedRoot,
+        server: commandSymlinkServer, link: 'symlink', intermediateLink: 'symlink', root: resolvedRoot,
         target: commandSymlinkTarget, control: true, error: null,
       },
     },

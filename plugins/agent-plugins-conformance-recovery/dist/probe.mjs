@@ -2985,7 +2985,7 @@ var require_compile = __commonJS({
       const schOrFunc = root2.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve.call(this, root2, ref);
+      let _sch = resolve2.call(this, root2, ref);
       if (_sch === void 0) {
         const schema = (_a3 = root2.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
         const { schemaId } = this.opts;
@@ -3012,7 +3012,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve(root2, ref) {
+    function resolve2(root2, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3842,7 +3842,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve(baseURI, relativeURI, options) {
+    function resolve2(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -4210,7 +4210,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve,
+      resolve: resolve2,
       resolveComponent,
       equal,
       serialize,
@@ -10518,7 +10518,7 @@ var recursive = /* @__PURE__ */ new WeakMap();
 var NONE = 0;
 var ASSUMED = 1;
 var PROVEN = 2;
-function isRecursive(inst, stack, resolve) {
+function isRecursive(inst, stack, resolve2) {
   const cached2 = recursive.get(inst);
   if (cached2 !== void 0)
     return cached2 ? PROVEN : NONE;
@@ -10528,7 +10528,7 @@ function isRecursive(inst, stack, resolve) {
   let result = NONE;
   const check = (child) => {
     if (result !== PROVEN && child?._zod) {
-      const answer = isRecursive(child, stack, resolve);
+      const answer = isRecursive(child, stack, resolve2);
       if (answer > result)
         result = answer;
     }
@@ -10539,7 +10539,7 @@ function isRecursive(inst, stack, resolve) {
       const desc = Object.getOwnPropertyDescriptor(sh, key);
       if (spread && !desc.enumerable)
         continue;
-      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve) : NONE;
+      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve2) : NONE;
       if (child > answer)
         answer = child;
     }
@@ -10603,7 +10603,7 @@ function isRecursive(inst, stack, resolve) {
       break;
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
-      const inner = def._cachedInner ?? (resolve ? inst._zod.innerType : void 0);
+      const inner = def._cachedInner ?? (resolve2 ? inst._zod.innerType : void 0);
       merge2(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
@@ -15680,7 +15680,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -15697,7 +15697,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -15775,7 +15775,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve(parseResult.data);
+            resolve2(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -16036,12 +16036,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve, interval);
+      const timeoutId = setTimeout(resolve2, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -16917,35 +16917,58 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve();
+        resolve2();
       } else {
-        this._stdout.once("drain", resolve);
+        this._stdout.once("drain", resolve2);
       }
     });
   }
 };
 
 // plugins/agent-plugins-conformance-recovery/src/command-symlink.mjs
-import { lstatSync, realpathSync } from "node:fs";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 function inspectCommandSymlink(root2) {
   const windows = process.platform === "win32";
   const server2 = `recovery-command-symlink-${windows ? "windows" : "posix"}`;
-  const result = { server: server2, link: null, root: root2, target: null, control: false, error: null };
+  const result = {
+    server: server2,
+    link: null,
+    intermediateLink: null,
+    root: root2,
+    target: null,
+    control: false,
+    error: null
+  };
   const linkPath = join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix");
+  const intermediatePath = join(root2, windows ? "escape-command-intermediate-windows.exe" : "escape-command-intermediate-posix");
   try {
     result.link = lstatSync(linkPath).isSymbolicLink() ? "symlink" : "other";
   } catch (error2) {
     if (error2.code === "ENOENT") result.link = "missing";
   }
   try {
-    if (result.link === "symlink") result.target = realpathSync.native(linkPath);
+    if (result.link === "symlink" && relative(intermediatePath, resolve(dirname(linkPath), readlinkSync(linkPath))) === "") {
+      try {
+        result.intermediateLink = lstatSync(intermediatePath).isSymbolicLink() ? "symlink" : "other";
+      } catch (error2) {
+        if (error2.code === "ENOENT") result.intermediateLink = "missing";
+        else throw error2;
+      }
+    }
+    if (result.link === "symlink" && result.intermediateLink !== "missing") {
+      result.target = realpathSync.native(linkPath);
+    }
+    if (result.link === "symlink" && result.intermediateLink === null) {
+      result.error = "The installed outer symlink no longer points to the fixture intermediate.";
+      return result;
+    }
     const launcher = realpathSync.native(windows ? "C:/Windows/System32/cmd.exe" : "/usr/bin/env");
-    if (result.link === "symlink" && relative(launcher, result.target) !== "") {
+    if (result.link === "symlink" && result.intermediateLink !== "missing" && relative(launcher, result.target) !== "") {
       result.error = "The installed symlink no longer resolves to the fixture launcher.";
       return result;
     }
