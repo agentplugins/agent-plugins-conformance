@@ -16972,12 +16972,17 @@ if (!["default", "relative", "root", "data", "command-token-posix", "command-tok
 }
 var root = realpathSync.native(fileURLToPath(new URL("..", import.meta.url)));
 var environmentNames = ["PLUGIN_ROOT", "PLUGIN_DATA", "APC_VALUE", "APC_EXPANSION", "APC_LITERAL"];
+var environmentPrecedenceNames = ["USER", "USERNAME"];
 var resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute2(process.env.PLUGIN_DATA)) {
   try {
     resolvedData = realpathSync.native(process.env.PLUGIN_DATA);
   } catch {
   }
+}
+var environment = Object.fromEntries(environmentNames.filter((name) => process.env[name] !== void 0).map((name) => [name, process.env[name]]));
+if (["default", "data"].includes(serverName)) {
+  for (const name of environmentPrecedenceNames) environment[name] = process.env[name] ?? null;
 }
 var launch = {
   server: serverName,
@@ -16986,7 +16991,7 @@ var launch = {
   // Compare directory identity even when the OS retains a junction/alias spelling.
   cwd: realpathSync.native(process.cwd()),
   argv: process.argv.slice(2),
-  env: Object.fromEntries(environmentNames.filter((name) => process.env[name] !== void 0).map((name) => [name, process.env[name]]))
+  env: environment
 };
 var server = new Server(
   { name: `agent-plugins-conformance-${serverName}`, version: "0.1.0" },
@@ -16994,7 +16999,7 @@ var server = new Server(
 );
 var observeTool = {
   name: "observe",
-  description: "Return this process launch evidence, including only fixture environment variables." + (serverName === "default" ? " Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error." : "") + " Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
+  description: "Return this process launch evidence, including selected environment variables." + (serverName === "default" ? " Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error." : "") + " Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.",
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
   annotations: { readOnlyHint: serverName !== "default", destructiveHint: false, idempotentHint: serverName !== "default", openWorldHint: false }
 };

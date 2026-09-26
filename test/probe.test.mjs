@@ -37,7 +37,9 @@ async function connect(fixture, mode, override = {}) {
   const client = new Client({ name: 'conformance-reference-test', version: '1' });
   const transport = new StdioClientTransport({
     command: process.execPath, args: config.args.map(expand), cwd,
-    env: { ...variables, ...Object.fromEntries(Object.entries(config.env ?? {}).map(([key, value]) => [key, expand(value)])), APC_SHOULD_NOT_LEAK: 'unrelated ambient sentinel' },
+    env: { USER: 'ambient-user', USERNAME: 'ambient-username', ...variables,
+      ...Object.fromEntries(Object.entries(config.env ?? {}).map(([key, value]) => [key, expand(value)])),
+      APC_SHOULD_NOT_LEAK: 'unrelated ambient sentinel' },
     stderr: 'pipe', ...override,
   });
   fixture.clients.push(client);
@@ -61,6 +63,16 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
     assert.deepEqual(result.structuredContent, observation);
     assert.equal(observation.evidence.root, files.root);
     assert.equal(observation.evidence.env.APC_SHOULD_NOT_LEAK, undefined);
+    if (mode === 'default') {
+      assert.equal(observation.evidence.env.USER, 'apc-configured-environment-precedence');
+      assert.equal(observation.evidence.env.USERNAME, 'apc-configured-environment-precedence');
+    } else if (mode === 'data') {
+      assert.equal(observation.evidence.env.USER, 'ambient-user');
+      assert.equal(observation.evidence.env.USERNAME, 'ambient-username');
+    } else {
+      assert.equal(Object.hasOwn(observation.evidence.env, 'USER'), false);
+      assert.equal(Object.hasOwn(observation.evidence.env, 'USERNAME'), false);
+    }
     if (mode === 'default') {
       assert.equal(dirname(observation.evidence.dataWrite.path), files.data);
       assert.equal(observation.evidence.dataWrite.error, null);
@@ -93,8 +105,32 @@ test('copied plugin runs only MCP observation tools without node_modules', { tim
   const reportInput = input(observations);
   const direct = buildReport(reportInput);
   assert.equal(direct.summary.fail, 0);
-  assert.equal(direct.summary.pass, 15);
+  assert.equal(direct.summary.pass, 16);
   assert.equal(direct.summary.not_verified, 41);
+});
+
+test('faulty ambient precedence becomes a normal reporter failure for both platform variables', { timeout: 30_000 }, async (t) => {
+  const files = await fixture(t);
+  const variables = { PLUGIN_ROOT: files.root, PLUGIN_DATA: files.data };
+  const expand = (value) => value.replace(/\$\{(PLUGIN_ROOT|PLUGIN_DATA)\}/g, (_, name) => variables[name]);
+  const configured = Object.fromEntries(Object.entries(files.config.mcpServers.default.env)
+    .map(([name, value]) => [name, expand(value)]));
+  for (const name of ['USER', 'USERNAME']) {
+    const control = await connect(files, 'data', { env: {
+      ...variables, USER: 'ambient-user', USERNAME: 'ambient-username',
+    } });
+    const faulty = await connect(files, 'default', { env: {
+      ...variables, ...configured, [name]: `ambient-${name.toLowerCase()}`,
+    } });
+    const [controlResult, faultyResult] = await Promise.all([
+      control.callTool({ name: 'observe', arguments: {} }),
+      faulty.callTool({ name: 'observe', arguments: {} }),
+    ]);
+    const report = buildReport(input([faultyResult.structuredContent, controlResult.structuredContent]));
+    const outcome = report.results.find(({ id }) => id === 'mcp.stdio.env.configured-precedence');
+    assert.equal(outcome.status, 'fail', name);
+    assert.match(outcome.detail, new RegExp(`${name}: expected`));
+  }
 });
 
 test('copied recovery plugin serves exact valid and invalid-server observations without runtime dependencies', { timeout: 30_000 }, async (t) => {

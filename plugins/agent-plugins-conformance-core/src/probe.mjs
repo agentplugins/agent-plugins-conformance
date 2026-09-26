@@ -14,9 +14,15 @@ if (!['default', 'relative', 'root', 'data', 'command-token-posix', 'command-tok
 // This value is independent of the client-provided PLUGIN_ROOT environment.
 const root = realpathSync.native(fileURLToPath(new URL('..', import.meta.url)));
 const environmentNames = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
+const environmentPrecedenceNames = ['USER', 'USERNAME'];
 let resolvedData = null;
 if (process.env.PLUGIN_DATA && isAbsolute(process.env.PLUGIN_DATA)) {
   try { resolvedData = realpathSync.native(process.env.PLUGIN_DATA); } catch { /* Unobservable target remains null. */ }
+}
+const environment = Object.fromEntries(environmentNames.filter((name) => process.env[name] !== undefined)
+  .map((name) => [name, process.env[name]]));
+if (['default', 'data'].includes(serverName)) {
+  for (const name of environmentPrecedenceNames) environment[name] = process.env[name] ?? null;
 }
 const launch = {
   server: serverName,
@@ -25,14 +31,13 @@ const launch = {
   // Compare directory identity even when the OS retains a junction/alias spelling.
   cwd: realpathSync.native(process.cwd()),
   argv: process.argv.slice(2),
-  env: Object.fromEntries(environmentNames.filter((name) => process.env[name] !== undefined)
-    .map((name) => [name, process.env[name]])),
+  env: environment,
 };
 const server = new Server({ name: `agent-plugins-conformance-${serverName}`, version: '0.1.0' },
   { capabilities: { tools: {} } });
 const observeTool = {
   name: 'observe',
-  description: 'Return this process launch evidence, including only fixture environment variables.' +
+  description: 'Return this process launch evidence, including selected environment variables.' +
     (serverName === 'default' ? ' Each call also creates, writes, closes, and removes a uniquely named temporary file directly in an absolute PLUGIN_DATA directory, recording any operation or cleanup error.' : '') +
     ' Record the observation object from structuredContent (or parsed JSON text) unchanged with the run-conformance reporter; exclude the MCP result wrapper.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },

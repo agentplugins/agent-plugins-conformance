@@ -55,7 +55,12 @@ const SKILLS = {
   'conformance-recovery-valid': 'APC_RECOVERY_VALID_V1',
   'conformance-invalid-mcp-valid': 'APC_INVALID_MCP_VALID_V1',
 };
-const ENV_KEYS = ['PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL'];
+const ENVIRONMENT_PRECEDENCE_KEYS = ['USER', 'USERNAME'];
+const ENVIRONMENT_PRECEDENCE_VALUE = 'apc-configured-environment-precedence';
+const ENV_KEYS = [
+  'PLUGIN_ROOT', 'PLUGIN_DATA', 'APC_VALUE', 'APC_EXPANSION', 'APC_LITERAL',
+  ...ENVIRONMENT_PRECEDENCE_KEYS,
+];
 
 function invalid(at, reason) {
   throw new TypeError(`${at}: ${reason}`);
@@ -295,7 +300,10 @@ export function validateInput(input, { recording = false } = {}) {
       array(evidence.argv, `${evidenceAt}.argv`);
       evidence.argv.forEach((argument, i) => string(argument, `${evidenceAt}.argv[${i}]`, true));
       object(evidence.env, ENV_KEYS, [], `${evidenceAt}.env`);
-      for (const [key, value] of Object.entries(evidence.env)) string(value, `${evidenceAt}.env.${key}`, true);
+      for (const [key, value] of Object.entries(evidence.env)) {
+        if (ENVIRONMENT_PRECEDENCE_KEYS.includes(key) && value === null) continue;
+        string(value, `${evidenceAt}.env.${key}`, true);
+      }
       if (observation.server === 'default' && evidence.dataWrite !== null) {
         const at = `${evidenceAt}.dataWrite`;
         const write = evidence.dataWrite;
@@ -716,6 +724,37 @@ export function buildReport(input) {
       `default resolved PLUGIN_DATA to ${JSON.stringify(defaultData)}. data resolved PLUGIN_DATA to ${JSON.stringify(dataCwdData)}.`);
   }
   const evidence = runtime.get('default');
+  const precedenceCase = 'mcp.stdio.env.configured-precedence';
+  const environmentPrecedenceEvidence = Object.fromEntries(['default', 'data']
+    .map((server) => [server, runtime.get(server)]));
+  const missingPrecedenceServers = Object.entries(environmentPrecedenceEvidence)
+    .filter(([, value]) => value === undefined).map(([server]) => server);
+  const missingPrecedenceKeys = Object.entries(environmentPrecedenceEvidence).flatMap(([server, value]) => value === undefined
+    ? []
+    : ENVIRONMENT_PRECEDENCE_KEYS.filter((key) => !Object.hasOwn(value.env, key))
+      .map((key) => `${server}.${key}`));
+  if (missingPrecedenceServers.length > 0) {
+    set(precedenceCase, 'not_verified',
+      `Missing MCP observation for: ${missingPrecedenceServers.join(', ')}.`);
+  } else if (missingPrecedenceKeys.length > 0) {
+    set(precedenceCase, 'not_verified',
+      `Environment precedence evidence is missing: ${missingPrecedenceKeys.join(', ')}.`);
+  } else {
+    const configuredDifferences = ENVIRONMENT_PRECEDENCE_KEYS
+      .filter((key) => environmentPrecedenceEvidence.default.env[key] !== ENVIRONMENT_PRECEDENCE_VALUE)
+      .map((key) => mismatch(key, ENVIRONMENT_PRECEDENCE_VALUE, environmentPrecedenceEvidence.default.env[key]));
+    if (configuredDifferences.length > 0) {
+      set(precedenceCase, 'fail',
+        `Configured environment values were not delivered. ${configuredDifferences.join(' ')}`);
+    } else {
+      const differingControls = ENVIRONMENT_PRECEDENCE_KEYS.filter((key) =>
+        typeof environmentPrecedenceEvidence.data.env[key] === 'string' &&
+        environmentPrecedenceEvidence.data.env[key] !== ENVIRONMENT_PRECEDENCE_VALUE);
+      set(precedenceCase, differingControls.length > 0 ? 'pass' : 'not_verified', differingControls.length > 0
+        ? `Configured values replaced different inherited control values for: ${differingControls.join(', ')}.`
+        : 'No control value differed from the configured value, so replacement was not observable.');
+    }
+  }
   if (evidence) {
     const { root, env, argv } = evidence;
     const flavor = pathFlavor(root);

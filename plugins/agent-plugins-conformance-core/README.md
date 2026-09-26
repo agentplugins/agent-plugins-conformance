@@ -31,7 +31,8 @@ Replace the path with a downloaded or installed copy of this plugin; the command
 | `mcp.stdio.env.plugin-data-absolute` | Supplied `PLUGIN_DATA` is an absolute path. This check does not exercise writability, storage dedication, or persistence across updates. |
 | `filesystem.data.writable` | The default server can create, write, and close a small temporary file directly in the supplied `PLUGIN_DATA` directory. |
 | `filesystem.data.consistent-within-plugin` | Servers using omitted and data-rooted working directories resolve `PLUGIN_DATA` to the same filesystem path. |
-| `mcp.stdio.env.configured-value` | The configured value reaches the subprocess. The fixture does not arrange a conflicting inherited value, so it does not establish override behavior. |
+| `mcp.stdio.env.configured-value` | The configured value reaches the subprocess. |
+| `mcp.stdio.env.configured-precedence` | Configured environment values replace conflicting base-environment values. |
 | `mcp.stdio.args.preservation-and-expansion` | Argument boundaries, including spaces and an empty argument, are preserved; recognized placeholders expand and unknown placeholder-like text stays literal. |
 | `mcp.stdio.command.single-token` | A command path containing a space is preserved as a single executable token. |
 | `mcp.stdio.env.expansion` | Repeated recognized placeholders expand in environment values and unknown placeholder-like text stays literal. |

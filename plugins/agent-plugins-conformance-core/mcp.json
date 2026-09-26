@@ -18,7 +18,9 @@
       "env": {
         "APC_VALUE": "fixture value with spaces",
         "APC_EXPANSION": "${PLUGIN_ROOT}|${PLUGIN_DATA}|${PLUGIN_ROOT}",
-        "APC_LITERAL": "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}"
+        "APC_LITERAL": "${APC_UNKNOWN}|$APC_VALUE|${PLUGIN_ROOT_SUFFIX}",
+        "USER": "apc-configured-environment-precedence",
+        "USERNAME": "apc-configured-environment-precedence"
       }
     },
     "relative": {
