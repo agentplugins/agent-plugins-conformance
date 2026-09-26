@@ -65,7 +65,8 @@
         "arg with spaces",
         "",
         "literal-value"
-      ]
+      ],
+      "cwd": "./probe-workdir"
     },
     "command-token-windows": {
       "type": "stdio",
@@ -74,7 +75,8 @@
         "arg with spaces",
         "",
         "literal-value"
-      ]
+      ],
+      "cwd": "./probe-workdir"
     },
     "sse": {
       "type": "sse",
