@@ -1,6 +1,6 @@
 # Agent Plugins conformance suite
 
-Plugins for collecting evidence about client support for [Agent Plugins](https://agent-plugins.org/). Results describe the observed run and covered cases; they are not whole-client certification.
+Plugins for collecting evidence about client support for [Agent Plugins](https://agent-plugins.org/). Results describe the observed run and covered cases; they are not whole-client certification. See [coverage limits](docs/coverage-limits.md) for deferred and deliberately omitted checks.
 
 ## Run the checks
 
