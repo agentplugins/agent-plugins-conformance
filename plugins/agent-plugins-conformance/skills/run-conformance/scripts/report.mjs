@@ -82,7 +82,7 @@ async function withReportLock(outputPath, update) {
         if (owners.length) {
           const ownerPath = join(lockPath, owners[0]);
           try {
-            if (Date.now() - (await stat(ownerPath)).mtimeMs > staleAfter) await unlink(ownerPath);
+            if (Date.now() - (await stat(ownerPath)).mtimeMs > staleAfter) await removeLockOwner(ownerPath);
           } catch (cleanupError) {
             if (cleanupError.code !== 'ENOENT') throw cleanupError;
           }
@@ -97,7 +97,7 @@ async function withReportLock(outputPath, update) {
     try {
       await update();
     } finally {
-      await rm(join(lockPath, owner), { force: true });
+      await removeLockOwner(join(lockPath, owner));
       await removeEmptyLock(lockPath);
     }
   } finally {
@@ -105,11 +105,39 @@ async function withReportLock(outputPath, update) {
   }
 }
 
+async function removeLockOwner(ownerPath) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await unlink(ownerPath);
+      return;
+    } catch (error) {
+      if (error.code === 'ENOENT') return;
+      if (error.code !== 'EPERM' || attempt === 10) throw error;
+      // Retry Windows permission errors briefly on this exact owner path.
+      await setTimeout(100);
+    }
+  }
+}
+
 async function removeEmptyLock(lockPath) {
-  try {
-    await rmdir(lockPath);
-  } catch (error) {
-    if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) throw error;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rmdir(lockPath);
+      return;
+    } catch (error) {
+      if (['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) return;
+      if (error.code !== 'EPERM') throw error;
+      // Retry Windows permission errors briefly when removing the empty lock.
+      // A new owner may also have filled the directory in the meantime.
+      try {
+        if ((await readdir(lockPath)).length > 0) return;
+      } catch (readError) {
+        if (readError.code === 'ENOENT') return;
+        if (readError.code !== 'EPERM') throw readError;
+      }
+      if (attempt === 10) throw error;
+      await setTimeout(100);
+    }
   }
 }
 

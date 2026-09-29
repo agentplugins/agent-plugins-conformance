@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -309,6 +309,48 @@ test('a writer waits for a held report lock and proceeds after release', async (
   await rename(lockPath, `${lockPath}-released`);
   assertSuccess(await writer.result);
 
+  assert.deepEqual(await readReport(fixture), buildReport({
+    schemaVersion: 1, observations: [oldObservation, newObservation],
+  }));
+  await assertUnlocked(fixture);
+});
+
+for (const operation of ['unlink', 'rmdir']) test(`a transient ${operation} permission error while removing an expired lock is retried`, async (t) => {
+  const oldObservation = skill('alpha');
+  const newObservation = skill('beta');
+  const fixture = await makeFixture(t, [oldObservation]);
+  const destination = join(await realpath(dirname(fixture.outputPath)), basename(fixture.outputPath));
+  const lockPath = `${destination}.lock`;
+  await mkdir(lockPath);
+  const ownerPath = join(lockPath, randomUUID());
+  await writeFile(ownerPath, '');
+  const expired = new Date(Date.now() - 20_000);
+  await utimes(ownerPath, expired, expired);
+
+  const preload = join(fixture.directory, `transient-${operation}.mjs`);
+  await writeFile(preload, `
+    import fs from 'node:fs/promises';
+    import { syncBuiltinESMExports } from 'node:module';
+
+    const operation = ${JSON.stringify(operation)};
+    const target = ${JSON.stringify(operation === 'unlink' ? ownerPath : lockPath)};
+    const originalRemove = fs[operation].bind(fs);
+    let failed = false;
+    fs[operation] = async function remove(path, ...args) {
+      if (!failed && String(path) === target) {
+        failed = true;
+        const error = new Error('operation not permitted');
+        error.code = 'EPERM';
+        throw error;
+      }
+      return originalRemove(path, ...args);
+    };
+    syncBuiltinESMExports();
+  `);
+
+  assertSuccess(await runReporter(fixture, {
+    action: 'record', observation: newObservation,
+  }, ['--import', pathToFileURL(preload).href]));
   assert.deepEqual(await readReport(fixture), buildReport({
     schemaVersion: 1, observations: [oldObservation, newObservation],
   }));

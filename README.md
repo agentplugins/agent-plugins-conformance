@@ -17,7 +17,7 @@ The suite includes these plugins:
 
 To include the optional Streamable HTTP and legacy HTTP+SSE checks, follow the [Core fixture's HTTP setup](plugins/agent-plugins-conformance-core/#optional-http-setup) **before the client loads the plugins**. This starts a bundled local server in a separate terminal; CI can launch the same command. Without the server, HTTP checks remain `not_verified` and the agent continues collecting the other checks.
 
-Install and load the plugins through the client's Agent Plugins support, then ask the agent:
+Install and load the plugins from the same [release tag](docs/release-policy.md#release-tags) through the client's Agent Plugins support, then ask the agent:
 
 > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
