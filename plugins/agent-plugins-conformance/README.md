@@ -13,7 +13,7 @@ Results describe the observed run and covered cases; they are not whole-client c
 
    > Run the run-conformance skill from Agent Plugins Conformance and save the JSON report to /tmp/agent-plugins-conformance/report.json.
 
-The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records observations as they are collected. The reporter creates missing parent directories and updates the JSON file after each recording. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
+The [run-conformance skill](skills/run-conformance/SKILL.md) initializes the destination, then records observations as they are collected. The reporter creates missing parent directories and safely merges concurrent recordings into the JSON file. Starting a run replaces any previous report at the same path, so concurrently active runs need distinct destinations.
 
 When collection ends, the agent gives the report's absolute path and any collection or recording limitations. A saved report may be an incomplete snapshot if collection was interrupted; file existence alone does not establish completion.
 
