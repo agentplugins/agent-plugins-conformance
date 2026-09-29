@@ -5,27 +5,25 @@ description: Collect Agent Plugins conformance observations through the current 
 
 # Run the conformance probes
 
-Collect observations from the installed Agent Plugins Conformance fixtures. Use the reporting script beside this skill to maintain the JSON report as you collect evidence. The reporter assigns outcomes for the covered cases; your role is to collect and record observations faithfully.
+Observe the installed Agent Plugins Conformance fixtures through the client's normal skill and MCP surfaces. The reporting script beside this skill is the durable evidence store and deterministic evaluator; it assigns `pass`, `fail`, and `not_verified`. Record what the client exposes or returns without interpreting those outcomes yourself.
 
-## Start the report
+Client catalogs, resources delivered through the client's normal loading mechanism, successful MCP results, and native client diagnostics are evidence. A skill body delivered by that mechanism remains client-loaded evidence however the client represents it in the conversation. Skill text copied into a request without that provenance is not. Independently found package files may establish fixture or control facts, but not client advertisement, loading, or execution.
 
-1. Identify the absolute JSON report path supplied by the user. If none was supplied, ask for it before starting.
-2. Locate `scripts/report.mjs` relative to this client-loaded skill and use its absolute path in commands. Node.js 22 or newer must be available as `node`, and you must have a command-execution tool. If either is unavailable, explain the limitation.
-3. Invoke the script with the user's absolute report path as its only argument. Supply this JSON message through stdin:
+## Initialize the report
 
-   ```json
-   {"action":"start"}
-   ```
+Use the user's exact absolute JSON report path. If none was supplied, ask for it. Locate `scripts/report.mjs` relative to this client-loaded skill and use its absolute path. This workflow requires a command-execution tool and Node.js 22 or newer as `node`; if either is unavailable, explain the limitation.
 
-   Start every new run this way and confirm that initialization succeeds before collecting observations. The script creates missing parent directories and replaces any existing report at that exact path with a fresh report. All checks initially have status `not_verified`. Concurrently active runs must use distinct report paths.
+Initialize the report by invoking the reporter with the report path as its only argument and sending this single message through stdin:
 
-Each invocation has this form:
+```json
+{"action":"start"}
+```
 
 ```text
 node <absolute-path-to-this-skill>/scripts/report.mjs <absolute-report-path>
 ```
 
-Send one JSON message through the command tool's stdin facility. If the tool accepts only shell commands, use the shell's literal-input mechanism. For example:
+If the command tool accepts only shell commands, use its literal-input facility so it does not expand the JSON. For example, in a POSIX shell:
 
 ```sh
 node '/absolute/path/to/run-conformance/scripts/report.mjs' '/absolute/path/to/report.json' <<'CONFORMANCE_INPUT'
@@ -33,11 +31,11 @@ node '/absolute/path/to/run-conformance/scripts/report.mjs' '/absolute/path/to/r
 CONFORMANCE_INPUT
 ```
 
-Replace the example paths. Write the report only to the destination the user requested.
+Wait for successful initialization before recording observations. `start` creates missing parent directories, replaces any report at that path, and initializes every check as `not_verified`. Use different paths for concurrent runs and write only to the requested destination.
 
-## Record each observation
+## Record observations
 
-Run recording commands sequentially. Never submit recording commands together in a parallel tool-call batch; wait for each command to finish before issuing the next. Record each observation before attempting another component. After obtaining an observation, immediately send this message through stdin to the same reporting script and report path:
+Save observations during collection so you do not need to retain all evidence until the end. Send one observation per `record` message to the same reporter and path. Collection and recording may proceed in parallel.
 
 ```json
 {
@@ -46,85 +44,172 @@ Run recording commands sequentially. Never submit recording commands together in
 }
 ```
 
-Replace `observation` with the complete observation just obtained. The script retains the other evidence, replaces any previous observation of the same kind for that skill or server, evaluates the accumulated evidence, and updates the JSON report. A brief acknowledgment confirms each successful recording.
+Replace `observation` with the complete object obtained below. When possible, serialize the captured observation as JSON rather than retyping or reconstructing its fields. The reporter safely merges concurrent recordings and reevaluates the report. For the same kind and skill or server, the last committed recording replaces the previous observation.
 
-Collect all fixture skills and MCP tools through the client's normal mechanisms. The user or CI may start the optional HTTP server before client loading; do not start it or ask the user to start it during collection.
+Without a successful acknowledgment, the observation is not confirmed saved. Correct an input or command problem using the evidence already obtained and retry that `record`, or disclose the unconfirmed item at completion. Do not invoke `start` again; it would discard prior evidence.
 
-1. Find and load `conformance-alpha` and `conformance-beta` from Agent Plugins Conformance — Core, `conformance-recovery-valid` from Agent Plugins Conformance — Recovery, and `conformance-invalid-mcp-valid` from Agent Plugins Conformance — Invalid MCP, through the client's normal skill mechanism. A client-provided skill catalog followed by reading its advertised resource is a valid mechanism. Record the observation each loaded body supplies, one at a time. The example above shows the alpha observation. Do not infer their markers or claim discovery from files located independently of the client or skill bodies received in a prompt.
-2. Inspect the client's skill catalog for Core's `conformance-nested` reference. Record whether the client advertises it as a separate skill; names may be client-namespaced. Set `advertised` to `true` if it is advertised, or `false` if the catalog excludes it. If the catalog is unavailable or known to be incomplete, leave this observation missing unless it shows the nested skill. Finding the reference on disk does not establish advertisement, and you do not need to activate it. Record the observation through the same reporter:
+## Collection inventory
 
-   ```json
-   {
-     "action":"record",
-     "observation":{"kind":"skill-discovery","skill":"conformance-nested","advertised":false}
-   }
-   ```
+The names below are targets, not proof that the client exposes them. Client-visible names may be namespaced. Loaded skill bodies and MCP tool descriptions supply the canonical names and server IDs saved in observations.
 
-3. Inspect the client's MCP tool catalog for the `observe` tool of each invalid Recovery server with a probe (`recovery-cwd-invalid-form`, `recovery-cwd-escape`, `recovery-cwd-data-escape`, `recovery-cwd-symlink-escape`, `recovery-command-symlink-posix`, `recovery-command-symlink-windows`, `recovery-unknown-field`, `recovery-missing-type`, `recovery-env-plugin-root`, `recovery-env-plugin-data`, `recovery-http-type`, `recovery-http-non-loopback`, `recovery-http-relative-url`, `recovery-http-fragment`, `recovery-http-userinfo`, `recovery-http-duplicate-headers`, `recovery-http-header-name`, `recovery-http-header-value`, `recovery-sse-non-loopback`, `recovery-sse-relative-url`, `recovery-sse-fragment`, `recovery-sse-userinfo`, `recovery-sse-duplicate-headers`, `recovery-sse-header-name`, and `recovery-sse-header-value`). Each description identifies the fixture server ID; names may be client-namespaced. Set `advertised` to `true` if the tool is advertised, even in a partial catalog, and record that before calling it. Set `advertised` to `false` only after a known attempt to load Recovery and a usable complete client inventory that excludes the tool, including any deferred tools. For `recovery-cwd-symlink-escape`, `recovery-command-symlink-posix`, and `recovery-command-symlink-windows`, a completed startup failure still permits `advertised: false` when that complete inventory shows no tools for the server; installation may have removed the escaping symlink. For the other servers, leave the observation missing if startup or tool discovery fails. For every server, leave it missing if the load scope or inventory completeness is unknown, unless the tool is advertised. A failed call or a guessed tool name does not establish absence. No rejection diagnostic is required. Record each server separately through the same reporter, using its fixture server ID:
+**Core — Skill body**
 
-   ```json
-   {
-     "action":"record",
-     "observation":{"kind":"mcp-discovery","server":"recovery-cwd-escape","advertised":false}
-   }
-   ```
+- `conformance-alpha`
+- `conformance-beta`
 
-4. Find the `observe` tools on the Core fixture servers (`default`, `relative`, `root`, `data`, `command-token-posix`, `command-token-windows`, `http`, `http-redirect`, `sse`, `sse-header-precedence`, `sse-redirect`, and `sse-endpoint-origin`) and the Recovery fixture servers (`recovery-valid`, `recovery-cwd-invalid-form`, `recovery-cwd-escape`, `recovery-cwd-data-escape`, `recovery-cwd-symlink-escape`, `recovery-command-symlink-posix`, `recovery-command-symlink-windows`, `recovery-unknown-field`, `recovery-missing-type`, `recovery-env-plugin-root`, `recovery-env-plugin-data`, `recovery-http-type`, `recovery-http-non-loopback`, `recovery-http-relative-url`, `recovery-http-fragment`, `recovery-http-userinfo`, `recovery-http-duplicate-headers`, `recovery-http-header-name`, `recovery-http-header-value`, `recovery-sse-non-loopback`, `recovery-sse-relative-url`, `recovery-sse-fragment`, `recovery-sse-userinfo`, `recovery-sse-duplicate-headers`, `recovery-sse-header-name`, and `recovery-sse-header-value`) through the client's normal MCP mechanism. Tool names may be client-namespaced. The remote MCP tool descriptions identify their fixture server IDs; retain that association when calling each tool so that an error can be recorded for the same server. Call each available tool with `{}`. First inspect whether the client returned a successful MCP result or a native discovery/call error. For a native remote MCP error, follow step 5 without parsing it as observation JSON. For a native stdio error, leave that server’s runtime observation missing; retain any discovery observation already recorded. Only the platform-appropriate command-token server is expected to run; a startup error for the other is not a collection limitation. For a successful result, take the observation from `structuredContent` (some clients show `structured_content`), or parse the JSON in the tool's text content. Immediately record that complete object; exclude the MCP result wrapper containing `content` or `structuredContent`. Preserve the returned paths and values exactly. The `http-redirect` and `sse-redirect` fixtures redirect requests to another local origin, and `sse-endpoint-origin` advertises a message endpoint on that origin. Do not authorize forwarding configured headers to these destinations.
-5. If a completed remote MCP discovery or call attempt instead produces a native error, record it as error evidence:
+**Recovery — Skill body**
+
+- `conformance-recovery-valid`
+
+**Invalid MCP — Skill body**
+
+- `conformance-invalid-mcp-valid`
+
+**Core nested reference — Skill discovery**
+
+- `conformance-nested`
+
+**Core — MCP stdio**
+
+- `default`
+- `relative`
+- `root`
+- `data`
+- `command-token-posix`
+- `command-token-windows`
+
+**Core — MCP Streamable HTTP**
+
+- `http`
+- `http-redirect`
+
+**Core — MCP legacy HTTP+SSE**
+
+- `sse`
+- `sse-header-precedence`
+- `sse-redirect`
+- `sse-endpoint-origin`
+
+**Recovery valid — MCP stdio**
+
+- `recovery-valid`
+
+**Recovery invalid — MCP stdio**
+
+- `recovery-cwd-invalid-form`
+- `recovery-cwd-escape`
+- `recovery-cwd-data-escape`
+- `recovery-cwd-symlink-escape`
+- `recovery-command-symlink-posix`
+- `recovery-command-symlink-windows`
+- `recovery-unknown-field`
+- `recovery-missing-type`
+- `recovery-env-plugin-root`
+- `recovery-env-plugin-data`
+
+**Recovery invalid — MCP Streamable HTTP**
+
+- `recovery-http-type`
+- `recovery-http-non-loopback`
+- `recovery-http-relative-url`
+- `recovery-http-fragment`
+- `recovery-http-userinfo`
+- `recovery-http-duplicate-headers`
+- `recovery-http-header-name`
+- `recovery-http-header-value`
+
+**Recovery invalid — MCP legacy HTTP+SSE**
+
+- `recovery-sse-non-loopback`
+- `recovery-sse-relative-url`
+- `recovery-sse-fragment`
+- `recovery-sse-userinfo`
+- `recovery-sse-duplicate-headers`
+- `recovery-sse-header-name`
+- `recovery-sse-header-value`
+
+The optional HTTP server may already have been started by the user or CI. Do not start it or ask the user to start it during collection. `http-redirect` and `sse-redirect` redirect to another local origin, and `sse-endpoint-origin` advertises a message endpoint there. Do not authorize forwarding configured headers to those destinations.
+
+## Skills
+
+Find and load the four skill bodies in the inventory through the client's normal skill mechanism, and record the complete observation supplied by each body. A client-provided catalog followed by reading its advertised resource is valid. If a body is unavailable, leave its observation missing and continue.
+
+For `conformance-nested`, inspect the client skill catalog without activating it. Its mention here or in another skill body is not separate advertisement. Record `advertised: true` if the catalog advertises it, or `advertised: false` if the catalog excludes it. If the catalog is unavailable or known to be incomplete, leave this observation missing unless it shows the nested skill.
+
+Save the catalog observation as `{"kind":"skill-discovery","skill":"conformance-nested","advertised":<boolean>}`.
+
+## MCP
+
+Call every available registered conformance tool with `{}` and record its runtime outcome, including tools exposed from invalid entries.
+
+The client inventory is cumulative across ordinary pages, searches, and deferred results: once a registered tool appears, it remains advertised. A later result never erases that positive evidence. Treat absence as evidence only after the accumulated inventory is known complete for the relevant loaded scope.
+
+The `mcp-discovery` observation kind is only for Recovery invalid servers. If a registered tool belongs to a Recovery invalid server, record `{"kind":"mcp-discovery","server":"<canonical-id>","advertised":true}` even when the inventory is still partial. Discovery and runtime outcomes are separate observations.
+
+Catalog inspection alone is not a remote transport attempt. A completed remote discovery outcome is also evidence when no tool appears. Record its native error or completed empty result for every remote fixture within that operation's known scope.
+
+### Absent Recovery invalid tools
+
+After accumulating the client inventory, apply these ordered rules to every Recovery invalid server still unseen:
+
+1. If the relevant Recovery load scope or inventory completeness is unknown, including unresolved pagination or deferred tools, leave discovery missing.
+2. If a known-complete inventory for the loaded Recovery scope excludes the tool and no startup or discovery operation for that server failed, record `advertised: false`. This applies to all invalid servers, including the three symlink servers.
+3. A completed startup failure still permits `advertised: false` only for `recovery-cwd-symlink-escape`, `recovery-command-symlink-posix`, or `recovery-command-symlink-windows`, and only when the complete loaded-scope inventory excludes that tool. Installation may have removed the escaping symlink; the reporter combines this assertion with independent fixture and control evidence.
+4. Otherwise leave discovery missing. A startup or discovery failure for an ordinary invalid server does not prove configuration rejection.
+
+A failure affects only fixtures in that operation's scope; unaffected absent fixtures may still satisfy the complete-inventory rule. A failed call, guessed name, rejection diagnostic, or fixture inspection does not establish catalog absence. Negative discovery requires no rejection diagnostic. A negative discovery assertion is a catalog observation, not an empty runtime result; do not synthesize runtime `null` for an excluded remote fixture.
+
+### Runtime outcomes
+
+Apply these outcomes to an actual tool call or native transport discovery attempt, not to a catalog listing or search. Inspect the original client result before parsing. Preserve returned values and path literals exactly. A parsing or recording error is not a native client diagnostic.
+
+| Outcome | Observation |
+| --- | --- |
+| Successful MCP result | Record the complete object from `structuredContent` or `structured_content`, or parse it from the result's JSON text. Exclude the MCP wrapper. |
+| Native stdio discovery, startup, or call error | Leave runtime observation missing; retain any discovery observation. |
+| Native remote discovery or call error | Record the exact typed error below. |
+| Completed remote attempt with no observation or native error | Record `evidence: null` for each fixture actually attempted. |
+| Skipped, interrupted, or unattributable attempt | Leave runtime observation missing. |
+
+Only explicit `evidence: null` asserts a completed remote attempt without a payload or diagnostic. A missing runtime observation can also follow a completed stdio error, valid exclusion, unavailability, or interruption.
+
+Save a completed empty Streamable HTTP attempt as `{"kind":"mcp-streamable-http","server":"<canonical-id>","evidence":null}`; use `kind: "mcp-sse"` for HTTP+SSE.
+
+Use `kind: "mcp-streamable-http"` for Streamable HTTP errors and `kind: "mcp-sse"` for legacy HTTP+SSE errors:
 
 ```json
 {
-  "action":"record",
-  "observation":{
-    "kind":"mcp-streamable-http",
-    "server":"http-redirect",
-    "evidence":{
-      "type":"error",
-      "message":"<complete exact native error text>",
-      "classification":null
-    }
+  "kind":"mcp-streamable-http",
+  "server":"http-redirect",
+  "evidence":{
+    "type":"error",
+    "message":"<complete exact native error text>",
+    "classification":null
   }
 }
 ```
 
-Use `kind: "mcp-sse"` for `sse`, `sse-header-precedence`, `sse-redirect`, `sse-endpoint-origin`, and the `recovery-sse-*` fixtures. Use `kind: "mcp-streamable-http"` for `http`, `http-redirect`, and the `recovery-http-*` fixtures. Use the canonical fixture server ID from step 4 whose observation you attempted to collect.
+Identify the fixture from the completed discovery operation's scope or called tool; the error need not name it. If one operation fails for several remote fixtures, record the same complete original diagnostic separately for each affected fixture, never outside that scope. Do not summarize it or replace it with a later parsing, transformation, or reporter error.
 
-Establish that identity from the discovery operation’s scope or the called tool; the error need not name the server. If one completed discovery operation covers multiple remote MCP fixtures and fails for each, record the same error separately for each affected fixture. Do not assign an error to a fixture outside that operation’s scope. Copy the client’s complete original error diagnostic into `message` without summarizing or rewriting it. Do not substitute an error raised while parsing, transforming, or recording that diagnostic.
+Keep `classification` null unless the native diagnostic unambiguously proves one of these meanings:
 
-Leave `classification` as `null` except in these two cases:
+- For `http-redirect` or `sse-redirect`, use `"redirect-refused"` only when it establishes refusal to follow the redirect. Rejecting HTTP 307 as an unexpected response qualifies; merely mentioning 307 does not.
+- For `sse-endpoint-origin`, use `"endpoint-refused"` only when it rejects the endpoint event because its origin differs from the configured connection origin.
 
-- For `http-redirect` or `sse-redirect`, use `"redirect-refused"` when the native error unambiguously establishes refusal to follow the redirect, such as rejecting its HTTP 307 response as an unexpected server response. Merely mentioning 307 is insufficient.
-- For `sse-endpoint-origin`, use `"endpoint-refused"` when the native diagnostic unambiguously rejects the endpoint event because its origin differs from the configured connection origin.
+Unsupported SSE, generic transport or connection failures, timeouts, unknown-tool errors, and unrelated URL errors remain unclassified. For every Streamable HTTP recording, the reporter adds `serverHealthCheck`; do not supply it.
 
-Unsupported SSE, generic transport or connection failures, timeouts, unknown-tool errors, and unrelated URL errors do not establish either refusal; leave their classification `null`.
+Only the platform-appropriate Core command-token fixture is expected to run: `command-token-posix` on POSIX and `command-token-windows` on Windows.
 
-6. An invalid Recovery remote MCP fixture excluded under step 3 needs only its discovery observation. For other completed remote MCP discovery or call attempts that produce neither an observation nor a native error, record `evidence: null` for each remote MCP fixture whose observation you attempted to collect:
+## Complete the run
 
-```json
-{
-  "action":"record",
-  "observation":{"kind":"mcp-streamable-http","server":"http","evidence":null}
-}
-```
+Return the absolute report path and name every inventory item whose observation you could not collect or confirm saved. This includes unavailable Core transports even when their support is optional. Disclose any discovery assertions unsupported by catalog evidence. Expected invalid-fixture exclusions, the inapplicable command-token fixture, conformance findings, and successfully recorded remote error or null evidence are not gaps.
 
-Use `kind: "mcp-sse"` and the attempted SSE fixture server ID for an unsuccessful SSE attempt.
+Normal completion contains only the path and gaps, without listing successes. Do not read the accumulated report or generate a summary unless the user asks. The report contains the latest submitted evidence; its existence alone does not establish that the workflow completed.
 
-For unavailable skill bodies or stdio runtime observations, or any skipped or interrupted attempt, leave that evidence missing and continue collecting the remaining components. Preserve any discovery observations already recorded.
-
-For every Streamable HTTP recording, the reporter checks the local fixture and adds `serverHealthCheck` to the saved observation. Do not supply this field yourself. Keep track of collection limitations for your final response and leave outcome decisions to the reporter.
-
-A recording command failure means its observation was not successfully saved. Address an input or command error using the actual evidence, or identify the unsaved item in your final response. Retry an individual recording with `record`; invoking `start` again discards previously collected evidence.
-
-## Finish collection
-
-When collection ends, give the absolute JSON report path and note any collection or recording limitations. Expected fixture exclusions established under the discovery rules above are not collection limitations. Claim successful recording only for commands that succeeded. If initialization failed, do not claim a report was created for this run. The saved report represents the latest version of each recorded observation; its existence alone does not establish that collection finished.
-
-During normal completion, return only the path and limitations. Do not read the accumulated report into context or generate its summary unless the user asks. Users and CI can consume the JSON directly and choose which results to require. Preserve the evaluator's `pass`, `fail`, and `not_verified` statuses when discussing results. These results describe submitted evidence for covered cases, not client certification, and the evaluator trusts your account of how skills and tools were exposed.
-
-If the user asks you to summarize or explain the saved results, invoke the summarizer once:
+If the user requests a summary or explanation, invoke the summarizer once:
 
 ```text
 node <absolute-path-to-this-skill>/scripts/summarize.mjs <absolute-report-path>
 ```
 
-Use its table and explanations to answer the user's request.
+Use its table and explanations, preserving `pass`, `fail`, and `not_verified`. These statuses describe submitted evidence for covered cases, not client certification, and depend on the provenance of the observations recorded.

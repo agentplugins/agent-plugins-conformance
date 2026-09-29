@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, rmdir, stat, unlink, utimes, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join } from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import { buildReport, observationKey, validateInput } from '../../../src/report.mjs';
 import { validateSavedReport } from '../../../src/report-format.mjs';
 import { checkHttpHealth } from '../../../src/http-health.mjs';
@@ -37,6 +38,81 @@ async function writeReport(outputPath, report) {
   }
 }
 
+async function readReport(outputPath) {
+  let saved;
+  try {
+    saved = JSON.parse(await readFile(outputPath, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error('Report does not exist; start collection first');
+    throw error;
+  }
+  validateSavedReport(saved);
+  validateInput({ schemaVersion: saved.schemaVersion, observations: saved.observations });
+  return saved;
+}
+
+async function withReportLock(outputPath, update) {
+  const lockPath = `${outputPath}.lock`;
+  const staleAfter = 10_000;
+  const deadline = performance.now() + 15_000;
+  const candidate = await mkdtemp(`${lockPath}-`);
+  const owner = randomUUID();
+  try {
+    await writeFile(join(candidate, owner), '', { flag: 'wx', mode: 0o600 });
+    for (;;) {
+      const now = new Date();
+      await utimes(join(candidate, owner), now, now);
+      try {
+        // Publish an already nonempty directory so cleanup cannot remove a new owner.
+        await rename(candidate, lockPath);
+        break;
+      } catch (error) {
+        if (!['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES'].includes(error.code)) throw error;
+        let owners;
+        try {
+          owners = await readdir(lockPath);
+        } catch (readError) {
+          if (readError.code !== 'ENOENT') throw readError;
+          owners = [];
+        }
+        if (owners.length > 1 || (owners.length === 1 && !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/.test(owners[0]))) {
+          throw new Error(`Unexpected report lock contents: ${lockPath}`);
+        }
+        // A stale observer can remove only the owner it actually inspected.
+        if (owners.length) {
+          const ownerPath = join(lockPath, owners[0]);
+          try {
+            if (Date.now() - (await stat(ownerPath)).mtimeMs > staleAfter) await unlink(ownerPath);
+          } catch (cleanupError) {
+            if (cleanupError.code !== 'ENOENT') throw cleanupError;
+          }
+        }
+        await removeEmptyLock(lockPath);
+        if (performance.now() >= deadline) {
+          throw new Error(`Timed out waiting for report lock: ${lockPath}. Retry the recording.`);
+        }
+        await setTimeout(25 + Math.random() * 50);
+      }
+    }
+    try {
+      await update();
+    } finally {
+      await rm(join(lockPath, owner), { force: true });
+      await removeEmptyLock(lockPath);
+    }
+  } finally {
+    await rm(candidate, { recursive: true, force: true });
+  }
+}
+
+async function removeEmptyLock(lockPath) {
+  try {
+    await rmdir(lockPath);
+  } catch (error) {
+    if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) throw error;
+  }
+}
+
 try {
   const [outputPath, ...extra] = process.argv.slice(2);
   if (!outputPath || !isAbsolute(outputPath) || extra.length) {
@@ -46,30 +122,35 @@ try {
   for await (const chunk of process.stdin) chunks.push(chunk);
   const message = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   validateMessage(message);
-  let report;
+  let incoming;
   if (message.action === 'start') {
-    report = buildReport({ schemaVersion: 1, observations: [] });
     await mkdir(dirname(outputPath), { recursive: true });
   } else {
-    let saved;
-    try {
-      saved = JSON.parse(await readFile(outputPath, 'utf8'));
-    } catch (error) {
-      if (error.code === 'ENOENT') throw new Error('Report does not exist; start collection first');
-      throw error;
-    }
-    validateSavedReport(saved);
     // Validate all saved and incoming evidence before making a health request.
-    validateInput({ schemaVersion: saved.schemaVersion, observations: saved.observations });
-    const incoming = message.observation;
+    await readReport(outputPath);
+    incoming = message.observation;
     validateInput({ schemaVersion: 1, observations: [incoming] }, { recording: true });
-    const key = observationKey(incoming);
-    const observations = saved.observations.filter((existing) => observationKey(existing) !== key);
-    observations.push(incoming.kind === 'mcp-streamable-http'
-      ? { ...incoming, serverHealthCheck: await checkHttpHealth() } : incoming);
-    report = buildReport({ schemaVersion: saved.schemaVersion, observations });
+    // Network latency must not hold up other recordings.
+    if (incoming.kind === 'mcp-streamable-http') {
+      incoming = { ...incoming, serverHealthCheck: await checkHttpHealth() };
+    }
   }
-  await writeReport(outputPath, report);
+  // Parent aliases must use the same lock and publication destination.
+  const destination = join(await realpath(dirname(outputPath)), basename(outputPath));
+  await withReportLock(destination, async () => {
+    let report;
+    if (message.action === 'start') {
+      report = buildReport({ schemaVersion: 1, observations: [] });
+    } else {
+      // Re-read inside the lock; the preflight snapshot may already be obsolete.
+      const saved = await readReport(destination);
+      const key = observationKey(incoming);
+      const observations = saved.observations.filter((existing) => observationKey(existing) !== key);
+      observations.push(incoming);
+      report = buildReport({ schemaVersion: saved.schemaVersion, observations });
+    }
+    await writeReport(destination, report);
+  });
   console.log(message.action === 'start' ? 'Report started.' : 'Observation recorded.');
 } catch (error) {
   console.error(`Report error: ${error.message}`);
