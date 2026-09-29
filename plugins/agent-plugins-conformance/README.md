@@ -26,6 +26,7 @@ This abbreviated example shows three results and their summary counts; observati
 ```json
 {
   "schemaVersion": 1,
+  "suiteVersion": "0.1.0",
   "specVersion": "1.0.0",
   "results": [
     {
@@ -58,6 +59,8 @@ This abbreviated example shows three results and their summary counts; observati
   }
 }
 ```
+
+`suiteVersion` records the reporting plugin's version to help investigate saved results; `specVersion` identifies the specification being tested, and `schemaVersion` identifies the report format. Older reports may omit `suiteVersion`.
 
 Each object in `results` identifies its case through `id` and `label`, explains the outcome in `detail`, and cites the relevant specification sections in `specSections`. A result object may also contain a `warning` describing a probe cleanup failure, including the probe file's path and error. This warning does not change the result's `status`.
 

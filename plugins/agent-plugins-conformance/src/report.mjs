@@ -1,7 +1,12 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { CASES, MCP_CWD_VARIANTS } from './cases.mjs';
 
 export { CASES, CASE_IDS } from './cases.mjs';
+const SUITE_VERSION = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')).version;
+if (typeof SUITE_VERSION !== 'string' || !SUITE_VERSION.trim()) {
+  throw new TypeError('plugin.json.version: expected a nonempty string');
+}
 const CORE_SERVERS = Object.keys(MCP_CWD_VARIANTS);
 const COMMAND_TOKEN_SERVERS = Object.freeze({
   'command-token-posix': Object.freeze({
@@ -847,6 +852,7 @@ export function buildReport(input) {
   return {
     schemaVersion: 1,
     specVersion: '1.0.0',
+    suiteVersion: SUITE_VERSION,
     observations: [
       ...Object.keys(SKILLS).filter((skill) => skills.has(skill)).map((skill) => ({
         kind: 'skill', skill, marker: skills.get(skill),

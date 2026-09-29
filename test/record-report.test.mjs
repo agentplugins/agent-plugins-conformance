@@ -668,6 +668,8 @@ test('malformed saved state is rejected even when its bad observation would be r
   await mkdir(join(f.directory, 'nested directory'));
   const malformed = [
     '{', 'null', JSON.stringify({ schemaVersion: 1, observations: [] }),
+    JSON.stringify({ ...expected([]), suiteVersion: '' }),
+    JSON.stringify({ ...expected([]), suiteVersion: 123 }),
     JSON.stringify({ ...expected([]), summary: { pass: 999, fail: 0, not_verified: 0, total: 999 } }),
     JSON.stringify({ ...expected([skill()]), observations: [{ ...skill(), unexpected: true }] }),
   ];
@@ -678,6 +680,21 @@ test('malformed saved state is rejected even when its bad observation would be r
     assert.equal(result.stdout, '');
     assert.equal(await readFile(f.outputPath, 'utf8'), content);
   }
+});
+
+test('legacy saved reports remain readable and acquire suite version when recorded again', async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.directory, 'nested directory'));
+  const legacy = expected([skill('alpha')]);
+  delete legacy.suiteVersion;
+  await writeFile(f.outputPath, `${JSON.stringify(legacy)}\n`);
+  const summaryScript = fileURLToPath(new URL(
+    '../plugins/agent-plugins-conformance/skills/run-conformance/scripts/summarize.mjs', import.meta.url));
+  const summary = spawnSync(process.execPath, [summaryScript, f.outputPath], { encoding: 'utf8' });
+  assert.equal(summary.status, 0, summary.stderr);
+  assert.equal(summary.stdout.trimEnd(), formatReport(legacy));
+  f.record(skill('beta'));
+  assert.deepEqual(await f.read(), expected([skill('alpha'), skill('beta')]));
 });
 
 test('write errors report failure and remove sibling temporary files', async (t) => {
@@ -699,14 +716,19 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   const f = await fixture(t);
   const copiedPlugin = join(f.directory, 'copied plugin');
   await cp(new URL('../plugins/agent-plugins-conformance', import.meta.url), copiedPlugin, { recursive: true });
+  const manifestPath = join(copiedPlugin, 'plugin.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const copiedVersion = '9.8.7';
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, version: copiedVersion }));
   assert.equal((await readdir(copiedPlugin)).includes('node_modules'), false);
   const copiedScript = join(copiedPlugin, 'skills/run-conformance/scripts/report.mjs');
   f.success(start, copiedScript);
+  assert.equal((await f.read()).suiteVersion, copiedVersion);
   f.success({ action: 'record', observation: skill('alpha') }, copiedScript);
   f.success({ action: 'record', observation: skill('beta') }, copiedScript);
   f.success({ action: 'record', observation: discovery() }, copiedScript);
   const report = await f.read();
-  assert.deepEqual(report, expected([skill('alpha'), skill('beta'), discovery()]));
+  assert.deepEqual(report, { ...expected([skill('alpha'), skill('beta'), discovery()]), suiteVersion: copiedVersion });
   assert.equal(report.results.find(({ id }) => id === 'skills.discovery.immediate-children').status, 'pass');
   const summary = spawnSync(process.execPath, [join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'), f.outputPath], {
     cwd: f.directory, encoding: 'utf8', timeout: 10_000,
@@ -718,7 +740,10 @@ test('copied primary plugin records and summarizes without sibling plugins or ru
   const result = health.run({ action: 'record', observation: missingHttp() }, copiedScript);
   assert.equal(result.status, 0, result.stderr);
   const withHttp = await f.read();
-  assert.deepEqual(withHttp, expected([skill('alpha'), skill('beta'), discovery(), { ...missingHttp(), serverHealthCheck: 'passed' }]));
+  assert.deepEqual(withHttp, {
+    ...expected([skill('alpha'), skill('beta'), discovery(), { ...missingHttp(), serverHealthCheck: 'passed' }]),
+    suiteVersion: copiedVersion,
+  });
   // Reading saved evidence must remain deterministic after fixture state changes.
   await health.setResponse({ error: 'fixture stopped after collection' });
   const savedSummary = health.run('', join(copiedPlugin, 'skills/run-conformance/scripts/summarize.mjs'));

@@ -1,7 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildReport, CASE_IDS } from '../plugins/agent-plugins-conformance/src/report.mjs';
+
+const rootVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+
+test('all four plugin manifests use the root package version', () => {
+  for (const name of [
+    'agent-plugins-conformance', 'agent-plugins-conformance-core',
+    'agent-plugins-conformance-recovery', 'agent-plugins-conformance-invalid-mcp',
+  ]) {
+    const manifest = JSON.parse(readFileSync(new URL(`../plugins/${name}/plugin.json`, import.meta.url), 'utf8'));
+    assert.equal(manifest.version, rootVersion, name);
+  }
+});
 
 function input(root = '/fixture/plugin', data = '/state/plugin') {
   const flavor = root.startsWith('/') ? path.posix : path.win32;
@@ -95,6 +108,7 @@ test('complete stdio and skill core evidence passes its cases and preserves cano
   assert.deepEqual(report.summary, { pass: 19, fail: 0, not_verified: 39, total: 58 });
   assert.deepEqual(report.results.map(({ id }) => id), CASE_IDS);
   assert.equal(report.specVersion, '1.0.0');
+  assert.equal(report.suiteVersion, rootVersion);
   assert.deepEqual(result(report, 'mcp.stdio.env.plugin-root').specSections, ['9.1']);
   assert.deepEqual(report.observations, value.observations);
   runtime(value).argv.push('after report');
