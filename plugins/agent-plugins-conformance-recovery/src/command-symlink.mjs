@@ -10,7 +10,7 @@ export function inspectCommandSymlink(root) {
   const result = {
     server, link: null, intermediateLink: null, root, target: null, control: false, error: null,
   };
-  const linkPath = join(root, windows ? 'escape-command-windows.exe' : 'escape-command-posix');
+  const linkPath = join(root, windows ? 'escape-command-windows.exe' : 'env');
   const intermediatePath = join(root, windows
     ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix');
   try {

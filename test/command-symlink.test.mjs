@@ -43,7 +43,7 @@ test('the copied Recovery fixture follows the external command symlink through a
     const { root, clients, protocolErrors, stderr } = await copiedRecoveryFixture(t, 'apc command symlink ');
     const windows = process.platform === 'win32';
     const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
-    const link = path.join(root, windows ? 'escape-command-windows.exe' : 'escape-command-posix');
+    const link = path.join(root, windows ? 'escape-command-windows.exe' : 'env');
     const intermediate = path.join(root, windows
       ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix');
     const configuredTarget = windows ? 'C:/Windows/System32/cmd.exe' : '/usr/bin/env';
@@ -126,7 +126,7 @@ test('collector reports a rewritten command link actual target without treating 
   const { root } = await copiedRecoveryFixture(t, 'command-symlink-collector-');
   const server = `recovery-command-symlink-${process.platform === 'win32' ? 'windows' : 'posix'}`;
   const link = path.join(root, process.platform === 'win32'
-    ? 'escape-command-windows.exe' : 'escape-command-posix');
+    ? 'escape-command-windows.exe' : 'env');
   const inwardTarget = path.join(root, 'inward-launcher');
   await writeFile(inwardTarget, 'rewritten in-root target');
   await rm(link);
@@ -158,7 +158,7 @@ test('collector reports a rewritten command link actual target without treating 
 test('collector distinguishes either removed hop in the expected command chain', async (t) => {
   const windows = process.platform === 'win32';
   const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
-  const outerName = windows ? 'escape-command-windows.exe' : 'escape-command-posix';
+  const outerName = windows ? 'escape-command-windows.exe' : 'env';
   const intermediateName = windows
     ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix';
 
@@ -193,7 +193,7 @@ test('collector distinguishes either removed hop in the expected command chain',
 test('collector rejects malformed or rewritten command chains as usable evidence', async (t) => {
   const windows = process.platform === 'win32';
   const server = `recovery-command-symlink-${windows ? 'windows' : 'posix'}`;
-  const outerName = windows ? 'escape-command-windows.exe' : 'escape-command-posix';
+  const outerName = windows ? 'escape-command-windows.exe' : 'env';
   const intermediateName = windows
     ? 'escape-command-intermediate-windows.exe' : 'escape-command-intermediate-posix';
   const cases = [

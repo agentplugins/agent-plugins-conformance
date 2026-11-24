@@ -16944,7 +16944,7 @@ function inspectCommandSymlink(root2) {
     control: false,
     error: null
   };
-  const linkPath = join(root2, windows ? "escape-command-windows.exe" : "escape-command-posix");
+  const linkPath = join(root2, windows ? "escape-command-windows.exe" : "env");
   const intermediatePath = join(root2, windows ? "escape-command-intermediate-windows.exe" : "escape-command-intermediate-posix");
   try {
     result.link = lstatSync(linkPath).isSymbolicLink() ? "symlink" : "other";

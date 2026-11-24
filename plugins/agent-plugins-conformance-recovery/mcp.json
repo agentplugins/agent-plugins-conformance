@@ -15,7 +15,7 @@
     },
     "recovery-command-symlink-posix": {
       "type": "stdio",
-      "command": "./escape-command-posix",
+      "command": "./env",
       "args": ["node", "${PLUGIN_ROOT}/dist/probe.mjs", "recovery-command-symlink-posix"]
     },
     "recovery-command-symlink-windows": {

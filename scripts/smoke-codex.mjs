@@ -20,7 +20,7 @@ const commandPlatform = process.platform === 'win32' ? 'windows' : 'posix';
 const commandServer = `command-token-${commandPlatform}`;
 const commandSymlinkServers = ['recovery-command-symlink-posix', 'recovery-command-symlink-windows'];
 const commandSymlinkNames = {
-  posix: { outer: 'escape-command-posix', intermediate: 'escape-command-intermediate-posix' },
+  posix: { outer: 'env', intermediate: 'escape-command-intermediate-posix' },
   windows: {
     outer: 'escape-command-windows.exe', intermediate: 'escape-command-intermediate-windows.exe',
   },
